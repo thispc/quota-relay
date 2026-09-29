@@ -42,160 +42,16 @@ export interface Quota {
   /** Percent of the window still available, lowest of the windows that matter. */
   remaining?: number;
   fiveHour?: number;
-  fiveHourResetsAt?: number;
   sevenDay?: number;
-  sevenDayResetsAt?: number;
   resetsAt?: number;
   /** Minutes since Claude last refreshed the figure. */
   ageMinutes?: number;
   error?: string;
 }
 
-import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-
 const CACHE = join(homedir(), '.claude', 'usage-cache.json');
-let liveClaudeCache: { quota: Quota; time: number } | undefined;
-// 10 minutes: every Claude start indexes its working folder, and four open VS Code windows each polled every
-// minute (29 Sep 2026: rg listing the whole disk over and over, the Mac swapping)
-const CLAUDE_CACHE_TTL_MS = 10 * 60_000;
 
-export function resetClaudeCache(): void {
-  liveClaudeCache = undefined;
-}
-
-export function parseClaudeResetTime(dateStr: string): number | undefined {
-  if (!dateStr) return undefined;
-  const direct = Date.parse(dateStr);
-  if (!isNaN(direct)) return direct;
-
-  const relMatch = dateStr.match(/in\s+(\d+)\s*(m|min|minute|h|hour|d|day)/i);
-  if (relMatch) {
-    const amount = parseInt(relMatch[1], 10);
-    const unit = relMatch[2].toLowerCase();
-    const ms = unit.startsWith('h') ? amount * 3600000 : unit.startsWith('d') ? amount * 86400000 : amount * 60000;
-    return Date.now() + ms;
-  }
-
-  const match = dateStr.match(/([A-Za-z]+)\s+(\d{1,2})\s+at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
-  if (match) {
-    const [, monthStr, dayStr, hourStr, minStr, ampm] = match;
-    const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-    const month = months.indexOf(monthStr.toLowerCase().slice(0, 3));
-    if (month >= 0) {
-      const now = new Date();
-      let hour = parseInt(hourStr, 10);
-      if (ampm.toLowerCase() === 'pm' && hour < 12) hour += 12;
-      if (ampm.toLowerCase() === 'am' && hour === 12) hour = 0;
-      const minute = minStr ? parseInt(minStr, 10) : 0;
-      const day = parseInt(dayStr, 10);
-      const date = new Date(now.getFullYear(), month, day, hour, minute);
-      if (date.getTime() < now.getTime() - 86400000) {
-        date.setFullYear(now.getFullYear() + 1);
-      }
-      return date.getTime();
-    }
-  }
-  return undefined;
-}
-
-export function parseClaudeUsageOutput(raw: string): Quota {
-  let text = raw;
-  try {
-    const json = JSON.parse(raw);
-    if (typeof json.result === 'string') {
-      text = json.result;
-    }
-  } catch {}
-
-  const sessionMatch = text.match(/Current session:\s*(\d+)%\s*used(?:\s*·\s*resets\s*([^\n\r]+))?/i);
-  const weekMatch = text.match(/Current week[^:]*:\s*(\d+)%\s*used(?:\s*·\s*resets\s*([^\n\r]+))?/i);
-
-  if (!sessionMatch && !weekMatch) {
-    return { error: 'Could not parse Claude CLI usage output' };
-  }
-
-  const sessionUsed = sessionMatch ? parseInt(sessionMatch[1], 10) : undefined;
-  const weekUsed = weekMatch ? parseInt(weekMatch[1], 10) : undefined;
-
-  const fiveHour = sessionUsed !== undefined ? Math.max(0, 100 - sessionUsed) : undefined;
-  const sevenDay = weekUsed !== undefined ? Math.max(0, 100 - weekUsed) : undefined;
-  const both = [fiveHour, sevenDay].filter((n): n is number => typeof n === 'number');
-  const remaining = both.length ? Math.min(...both) : undefined;
-
-  const fiveHourResetsAt = sessionMatch?.[2] ? parseClaudeResetTime(sessionMatch[2].trim()) : undefined;
-  const sevenDayResetsAt = weekMatch?.[2] ? parseClaudeResetTime(weekMatch[2].trim()) : undefined;
-  const resetsAt = (fiveHour ?? 100) <= (sevenDay ?? 100) ? fiveHourResetsAt : sevenDayResetsAt;
-
-  return {
-    remaining,
-    fiveHour,
-    sevenDay,
-    fiveHourResetsAt,
-    sevenDayResetsAt,
-    resetsAt,
-    ageMinutes: 0
-  };
-}
-
-function resolveClaudeCommand(cmd: string, home: string): string {
-  if (existsSync(cmd)) return cmd;
-  const candidates = [
-    join(home, '.local', 'bin', 'claude'),
-    '/opt/homebrew/bin/claude',
-    '/usr/local/bin/claude'
-  ];
-  for (const c of candidates) {
-    if (existsSync(c)) return c;
-  }
-  return cmd;
-}
-
-function buildAugmentedEnv(): NodeJS.ProcessEnv {
-  const currentPath = process.env.PATH || '';
-  const home = homedir();
-  const extraPaths = [
-    join(home, '.local', 'bin'),
-    join(home, '.gemini', 'bin'),
-    '/opt/homebrew/bin',
-    '/usr/local/bin'
-  ];
-  const combined = [...extraPaths.filter(p => existsSync(p)), currentPath].join(':');
-  return { ...process.env, PATH: combined };
-}
-
-export function fetchClaudeLiveUsage(cmd = 'claude'): Quota | undefined {
-  if (liveClaudeCache && (Date.now() - liveClaudeCache.time) < CLAUDE_CACHE_TTL_MS) {
-    return liveClaudeCache.quota;
-  }
-  const resolved = resolveClaudeCommand(cmd, homedir());
-  try {
-    const output = execFileSync(resolved, ['--tools', '', '-p', '/usage', '--output-format', 'json'], {
-      encoding: 'utf8',
-      timeout: 12000,
-      env: buildAugmentedEnv(),
-      // an empty folder: started from VS Code's cwd (/), Claude listed every file on the disk
-      cwd: emptyDir()
-    });
-    const parsed = parseClaudeUsageOutput(output);
-    if (!parsed.error && (parsed.fiveHour !== undefined || parsed.sevenDay !== undefined)) {
-      liveClaudeCache = { quota: parsed, time: Date.now() };
-      return parsed;
-    }
-  } catch {}
-  return undefined;
-}
-
-export function readQuota(path = CACHE, forceLive = false, cmd = 'claude'): Quota {
-  if (path === CACHE) {
-    if (forceLive || !liveClaudeCache || (Date.now() - liveClaudeCache.time >= CLAUDE_CACHE_TTL_MS)) {
-      const live = fetchClaudeLiveUsage(cmd);
-      if (live) return live;
-    } else if (liveClaudeCache) {
-      return liveClaudeCache.quota;
-    }
-  }
-
+export function readQuota(path = CACHE): Quota {
   let raw: string;
   try { raw = readFileSync(path, 'utf-8'); }
   catch { return { error: 'no usage cache yet; run Claude Code once so it writes one' }; }
@@ -208,12 +64,11 @@ export function readQuota(path = CACHE, forceLive = false, cmd = 'claude'): Quot
     const left = (u?: number) => (typeof u === 'number' ? Math.max(0, 100 - u) : undefined);
     const fiveHour = left(five?.utilization), sevenDay = left(week?.utilization);
     const both = [fiveHour, sevenDay].filter((n): n is number => typeof n === 'number');
+    // the window that runs out first is the one that decides
     const tightest = both.length ? Math.min(...both) : undefined;
     const resets = (fiveHour ?? 100) <= (sevenDay ?? 100) ? five?.resets_at : week?.resets_at;
     return {
       remaining: tightest, fiveHour, sevenDay,
-      fiveHourResetsAt: five?.resets_at ? Date.parse(five.resets_at) : undefined,
-      sevenDayResetsAt: week?.resets_at ? Date.parse(week.resets_at) : undefined,
       resetsAt: resets ? Date.parse(resets) : undefined,
       ageMinutes: j.fetchedAt ? (Date.now() - j.fetchedAt) / 60000 : undefined
     };
@@ -264,10 +119,4 @@ export function describe(q: Quota, t: QuotaThresholds = DEFAULT_THRESHOLDS): str
   const where = plan.worker === 'codex' ? 'codex, to save the rest' : `claude (${plan.model})`;
   return `Claude ${q.remaining}% left (5h ${q.fiveHour ?? '?'}%, 7d ${q.sevenDay ?? '?'}%), resets ${back}${stale}. `
        + `Gear: ${gear} → ${where}.`;
-}
-
-function emptyDir(): string {
-  const dir = join(require('node:os').tmpdir(), 'ai-switchboard-empty');
-  try { require('node:fs').mkdirSync(dir, { recursive: true }); } catch { /* use it anyway */ }
-  return dir;
 }

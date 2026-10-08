@@ -93,10 +93,18 @@ export async function readCreds(dir?: string): Promise<Creds | undefined> {
 export async function writeCreds(dir: string | undefined, creds: Creds): Promise<void> {
   const body = JSON.stringify(creds);
   if (process.platform === 'darwin') {
-    // through stdin, as hex: a token in argv shows up in any process listing, and hex needs no quoting
+    // As hex, which needs no quoting. Through stdin when it fits, so the token is not in a process listing; but
+    // `security -i` reads each line into a 4096-byte buffer and runs whatever fitted, so a longer line (the home
+    // item also carries MCP logins) stored a cut-off item and signed Claude out (8 Oct 2026). Longer goes in argv.
     const hex = Buffer.from(body, 'utf8').toString('hex');
-    const r = await run('security', ['-i'], { input: `add-generic-password -U -a ${keychainAccount()} -s "${keychainService(dir)}" -X ${hex}\n` });
-    if (r.code !== 0 || /error/i.test(r.stderr)) throw new Error(`Keychain write failed: ${r.stderr.trim() || r.code}`);
+    const acct = keychainAccount(), svc = keychainService(dir);
+    const line = `add-generic-password -U -a ${acct} -s "${svc}" -X ${hex}\n`;
+    const r = line.length < 4000 ? await run('security', ['-i'], { input: line })
+                                 : await run('security', ['add-generic-password', '-U', '-a', acct, '-s', svc, '-X', hex]);
+    // never quote security's own output: it echoes the command, token and all
+    if (r.code !== 0 || r.stderr.trim()) throw new Error(`Keychain write failed (security exited ${r.code})`);
+    const back = await readCreds(dir);
+    if (!back || JSON.stringify(back) !== body) throw new Error('Keychain write did not read back as written');
   } else {
     const file = join(dir ?? HOME_DIR, '.credentials.json');
     await mkdir(dir ?? HOME_DIR, { recursive: true });
@@ -300,7 +308,13 @@ export async function switchTo(toId: string): Promise<AccountsState> {
       if (info) await writeAccountInfo(from.dir, info);
     }
     // only the Claude login moves; anything else in the home item (MCP server logins) stays where it is
-    await writeCreds(undefined, { ...(home ?? {}), claudeAiOauth: incoming.claudeAiOauth, organizationUuid: incoming.organizationUuid });
+    try {
+      await writeCreds(undefined, { ...(home ?? {}), claudeAiOauth: incoming.claudeAiOauth, organizationUuid: incoming.organizationUuid });
+    } catch (e) {
+      // put back exactly what was there, so a failed switch leaves Claude signed in as before
+      if (home) await writeCreds(undefined, home).catch(() => undefined);
+      throw e;
+    }
     if (incomingInfo) await writeAccountInfo(undefined, incomingInfo);
     s.active = toId; s.switchedAt = Date.now(); s.homeFp = fingerprint(incoming);
     await saveState(s);

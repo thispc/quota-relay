@@ -1,3 +1,5 @@
+// @ts-nocheck
+/* global acquireVsCodeApi */
 (function () {
   const vscode = acquireVsCodeApi();
   const log = document.getElementById('log');
@@ -70,13 +72,13 @@
     else if (m.type === 'delta' && live) {
       const was = atBottom();
       live.painted = (live.painted || '') + m.text;
-      live.body.textContent = live.painted;
+      live.body.innerHTML = renderMarkdown(live.painted);
       scroll(was);
     }
     else if (m.type === 'done') {
       if (!live) live = bubble('assistant', m.worker);
       live.el.querySelector('.who').textContent = m.worker;
-      live.body.textContent = m.text || '(no answer)';
+      live.body.innerHTML = renderMarkdown(m.text || '(no answer)');
       if (m.tokens) {
         const meta = document.createElement('div');
         meta.className = 'meta';
@@ -93,7 +95,43 @@
       log.replaceChildren();
       (m.turns || []).forEach(t => {
         const b = bubble(t.role === 'user' ? 'user' : 'assistant', t.role === 'user' ? undefined : (t.worker || 'assistant'));
-        b.body.textContent = t.text;
+        if (t.role === 'user') {
+          b.body.textContent = t.text;
+        } else {
+          b.body.innerHTML = renderMarkdown(t.text);
+        }
+      });
+    }
+  });
+
+  function renderMarkdown(text) {
+    if (!text) return '';
+    let escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    escaped = escaped.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+      const languageLabel = lang ? `<span class="code-lang">${lang}</span>` : '';
+      return `<div class="code-block">
+        <div class="code-header">${languageLabel}<button class="copy-btn" data-code="${encodeURIComponent(code)}">Copy</button></div>
+        <pre><code>${code}</code></pre>
+      </div>`;
+    });
+
+    escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+    escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    escaped = escaped.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    escaped = escaped.replace(/\n/g, '<br>');
+    return escaped;
+  }
+
+  document.addEventListener('click', e => {
+    if (e.target && e.target.classList.contains('copy-btn')) {
+      const raw = decodeURIComponent(e.target.getAttribute('data-code') || '');
+      navigator.clipboard.writeText(raw).then(() => {
+        e.target.textContent = 'Copied!';
+        setTimeout(() => { e.target.textContent = 'Copy'; }, 2000);
       });
     }
   });

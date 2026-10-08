@@ -1,4 +1,6 @@
 import { spawn, ChildProcess } from 'node:child_process';
+import { Buffer } from 'node:buffer';
+import process from 'node:process';
 import { WorkerAdapter, WorkerId, TaskRequest, TaskHandle, TaskResult, StreamChunk, AuthStatus } from './models';
 
 /** What each CLI says when the subscription's window is spent, rather than when the task itself went wrong. */
@@ -63,7 +65,7 @@ export class LocalCliAdapter implements WorkerAdapter {
     let child: ChildProcess | undefined;
     let settled = false;
     let rejectTask: ((reason?: unknown) => void) | undefined;
-    let timer: NodeJS.Timeout | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const promise = new Promise<TaskResult>((resolve, reject) => {
       rejectTask = reject;
       try {

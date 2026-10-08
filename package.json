@@ -1,16 +1,35 @@
 {
-	"name": "local-cli-workers",
-	"displayName": "Local CLI Workers",
-	"description": "Route VS Code tasks to the locally installed Codex and Claude Code CLIs, each signed in with its own subscription.",
+	"name": "ai-switchboard",
+	"displayName": "AI Switchboard: Quota Monitor & Model Router",
+	"description": "Run two or more Claude subscriptions as one: browser sign-in, one-click and automatic account switching, plus quota monitoring and model routing for Claude Code, Codex and Antigravity.",
 	"version": "0.1.0",
 	"publisher": "local-cli-workers",
 	"license": "MIT",
-	"repository": "https://github.com/thispc/vscode-openai-plugin",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/thispc/vscode-openai-plugin"
+	},
 	"engines": {
 		"vscode": "^1.88.0"
 	},
 	"categories": [
+		"AI",
+		"Machine Learning",
 		"Other"
+	],
+	"keywords": [
+		"claude",
+		"antigravity",
+		"codex",
+		"gemini",
+		"quota",
+		"rate limit",
+		"model router",
+		"powersaver",
+		"ai switchboard",
+		"llm",
+		"multiple accounts",
+		"account switcher"
 	],
 	"activationEvents": [
 		"onStartupFinished"
@@ -18,6 +37,63 @@
 	"main": "./dist/extension.js",
 	"contributes": {
 		"commands": [
+			{
+				"command": "aiSwitchboard.accounts",
+				"title": "AI Switchboard: Claude Accounts",
+				"icon": "$(account)"
+			},
+			{
+				"command": "aiSwitchboard.addAccount",
+				"title": "AI Switchboard: Add Claude Account (browser sign-in)"
+			},
+			{
+				"command": "aiSwitchboard.nextAccount",
+				"title": "AI Switchboard: Switch to Next Claude Account"
+			},
+			{
+				"command": "aiSwitchboard.showQuota",
+				"title": "AI Switchboard: Show Model Quota & Usage"
+			},
+			{
+				"command": "aiSwitchboard.chat",
+				"title": "AI Switchboard: Chat"
+			},
+			{
+				"command": "aiSwitchboard.newChat",
+				"title": "AI Switchboard: New Conversation"
+			},
+			{
+				"command": "aiSwitchboard.chatInput",
+				"title": "AI Switchboard: Chat (Quick Prompt)"
+			},
+			{
+				"command": "aiSwitchboard.runTask",
+				"title": "AI Switchboard: Run Task"
+			},
+			{
+				"command": "aiSwitchboard.cancelTask",
+				"title": "AI Switchboard: Cancel Active Task"
+			},
+			{
+				"command": "aiSwitchboard.showWorkers",
+				"title": "AI Switchboard: Show Worker Status"
+			},
+			{
+				"command": "aiSwitchboard.checkAuth",
+				"title": "AI Switchboard: Check CLI Authentication"
+			},
+			{
+				"command": "aiSwitchboard.openWorkerTerminal",
+				"title": "AI Switchboard: Open Worker Terminal"
+			},
+			{
+				"command": "aiSwitchboard.resumeTask",
+				"title": "AI Switchboard: Resume Task"
+			},
+			{
+				"command": "aiSwitchboard.clearHistory",
+				"title": "AI Switchboard: Clear Task History"
+			},
 			{
 				"command": "localCliWorkers.chat",
 				"title": "Local CLI Workers: Chat"
@@ -32,7 +108,7 @@
 			},
 			{
 				"command": "localCliWorkers.showQuota",
-				"title": "Local CLI Workers: Show Claude Usage and Gear"
+				"title": "Local CLI Workers: Show Model Quota & Usage (Claude, Codex, Antigravity)"
 			},
 			{
 				"command": "localCliWorkers.runTask",
@@ -61,145 +137,178 @@
 			{
 				"command": "localCliWorkers.clearHistory",
 				"title": "Local CLI Workers: Clear Task History"
+			},
+			{
+				"command": "aiSwitchboard.refreshClaude",
+				"title": "AI Switchboard: Refresh Claude Quota"
+			},
+			{
+				"command": "aiSwitchboard.refreshCodex",
+				"title": "AI Switchboard: Refresh Codex Quota"
+			},
+			{
+				"command": "aiSwitchboard.refreshAntigravity",
+				"title": "AI Switchboard: Refresh Antigravity Quota"
+			},
+			{
+				"command": "aiSwitchboard.refreshAll",
+				"title": "AI Switchboard: Refresh All Quotas"
+			},
+			{
+				"command": "localCliWorkers.refreshClaude",
+				"title": "Local CLI Workers: Refresh Claude Quota"
+			},
+			{
+				"command": "localCliWorkers.refreshCodex",
+				"title": "Local CLI Workers: Refresh Codex Quota"
+			},
+			{
+				"command": "localCliWorkers.refreshAntigravity",
+				"title": "Local CLI Workers: Refresh Antigravity Quota"
+			},
+			{
+				"command": "localCliWorkers.refreshAll",
+				"title": "Local CLI Workers: Refresh All Quotas"
 			}
 		],
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "aiSwitchboard",
+					"title": "AI Switchboard",
+					"icon": "media/switchboard.svg"
+				}
+			]
+		},
 		"views": {
-			"localCliWorkers": [
+			"aiSwitchboard": [
 				{
 					"id": "localCliWorkers.tasks",
 					"name": "Agent Tasks",
-					"when": "workspaceFolderCount > 0",
-					"icon": "$(hubot)"
+					"when": "workspaceFolderCount > 0"
 				}
 			]
 		},
 		"menus": {
 			"view/title": [
 				{
-					"command": "localCliWorkers.runTask",
+					"command": "aiSwitchboard.runTask",
 					"when": "view == localCliWorkers.tasks",
 					"group": "navigation"
 				},
 				{
-					"command": "localCliWorkers.clearHistory",
+					"command": "aiSwitchboard.clearHistory",
 					"when": "view == localCliWorkers.tasks",
 					"group": "navigation"
 				}
 			],
 			"view/item/context": [
 				{
-					"command": "localCliWorkers.cancelTask",
+					"command": "aiSwitchboard.cancelTask",
 					"when": "view == localCliWorkers.tasks && viewItem == runningTask",
 					"group": "inline"
 				},
 				{
-					"command": "localCliWorkers.resumeTask",
+					"command": "aiSwitchboard.resumeTask",
 					"when": "view == localCliWorkers.tasks && viewItem == task",
 					"group": "inline"
 				}
 			]
 		},
 		"configuration": {
-			"title": "Local CLI Workers",
+			"title": "AI Switchboard",
 			"properties": {
-				"localCliWorkers.managerModel": {
+				"aiSwitchboard.statusBarLayout": {
 					"type": "string",
-					"default": "local manager",
-					"description": "Label for the manager responsible for routing and reviewing worker tasks."
+					"enum": [
+						"separated",
+						"consolidated",
+						"active-only"
+					],
+					"default": "separated",
+					"description": "Visual density of status bar quota indicators: 'separated' (clean micro-badges for each tool), 'consolidated' (single compact pill), or 'active-only' (minimalist active worker only)."
 				},
-				"localCliWorkers.defaultWorker": {
+				"aiSwitchboard.accounts.autoSwitch": {
+					"type": "boolean",
+					"default": true,
+					"description": "Keep Claude on an account with room: when the active subscription is nearly spent, move every Claude client on this machine to the next one."
+				},
+				"aiSwitchboard.accounts.switchBelowPercent": {
+					"type": "number",
+					"default": 5,
+					"minimum": 0,
+					"maximum": 100,
+					"description": "Move to another account when the active one has this much or less left of its tighter window (5-hour or weekly)."
+				},
+				"aiSwitchboard.accounts.switchMargin": {
+					"type": "number",
+					"default": 10,
+					"minimum": 0,
+					"maximum": 100,
+					"description": "Only move to an account with at least this many points more than the switch threshold, so a move is worth making."
+				},
+				"aiSwitchboard.defaultWorker": {
 					"type": "string",
 					"enum": [
 						"auto",
 						"codex",
 						"claude"
 					],
-					"default": "auto"
+					"default": "auto",
+					"description": "Default CLI worker for running tasks."
 				},
-				"localCliWorkers.codexCommand": {
+				"aiSwitchboard.antigravityCommand": {
 					"type": "string",
-					"default": "codex"
+					"default": "agy",
+					"description": "Command or binary path for the official Antigravity CLI (agy)."
 				},
-				"localCliWorkers.codexModel": {
-					"type": "string",
-					"default": "local Codex CLI"
-				},
-				"localCliWorkers.claudeCommand": {
-					"type": "string",
-					"default": "claude"
-				},
-				"localCliWorkers.claudeModel": {
-					"type": "string",
-					"default": "local Claude Code CLI"
-				},
-				"localCliWorkers.maxConcurrentTasks": {
-					"type": "number",
-					"default": 1,
-					"minimum": 1,
-					"maximum": 8
-				},
-				"localCliWorkers.taskTimeoutMs": {
-					"type": "number",
-					"default": 600000,
-					"minimum": 1000
-				},
-				"localCliWorkers.showWorkerTerminals": {
-					"type": "boolean",
-					"default": true
-				},
-				"localCliWorkers.failureThreshold": {
-					"type": "number",
-					"default": 3,
-					"minimum": 1,
-					"maximum": 20
-				},
-				"localCliWorkers.usageThreshold": {
-					"type": "number",
-					"default": 0,
-					"minimum": 0,
-					"maximum": 10000,
-					"description": "Optional hard cap on completed tasks per worker per session. 0 means off; real limits come from what each CLI reports."
-				},
-				"localCliWorkers.codexSandbox": {
+				"aiSwitchboard.antigravityLabel": {
 					"type": "string",
 					"enum": [
-						"read-only",
-						"workspace-write",
-						"danger-full-access"
+						"Antigravity",
+						"AGY"
 					],
-					"default": "read-only",
-					"description": "Sandbox codex exec runs under. read-only suits reviews; workspace-write lets it edit files."
+					"default": "Antigravity",
+					"description": "Status bar label for Antigravity."
 				},
-				"localCliWorkers.limitedCooldownMs": {
-					"type": "number",
-					"default": 1800000,
-					"minimum": 60000,
-					"description": "How long to rest a worker whose CLI reported a usage limit without naming a reset time."
-				},
-				"localCliWorkers.claudeModelId": {
+				"aiSwitchboard.claudeCommand": {
 					"type": "string",
-					"default": "sonnet",
-					"description": "Model passed to claude --model. Leave empty for the CLI default, which on a Pro plan can answer 'requires usage credits'."
+					"default": "claude",
+					"description": "Command or path for Claude Code CLI."
 				},
-				"localCliWorkers.codexModelId": {
+				"aiSwitchboard.codexCommand": {
 					"type": "string",
-					"default": "",
-					"description": "Model passed to codex -m. Empty uses the Codex default for your ChatGPT plan."
+					"default": "codex",
+					"description": "Command or path for OpenAI Codex CLI."
 				},
-				"localCliWorkers.powerSaver.enabled": {
+				"aiSwitchboard.powerSaver.enabled": {
 					"type": "boolean",
 					"default": true,
-					"description": "Pick the worker and model from how much of Claude's window is left, read from ~/.claude/usage-cache.json."
+					"description": "Step Claude models down and delegate to Codex as the five-hour window empties, rather than burning Opus to the floor."
 				},
-				"localCliWorkers.powerSaver.saverBelowPercent": {
+				"aiSwitchboard.powerSaver.saverBelowPercent": {
 					"type": "number",
 					"default": 30,
 					"minimum": 0,
 					"maximum": 100,
-					"description": "With this much or less left, send the work to codex and save the rest of Claude's window."
+					"description": "Percent of Claude's window remaining at or below which work leaves Claude entirely and delegates to another provider."
 				},
-				"localCliWorkers.powerSaver.ladder": {
+				"aiSwitchboard.powerSaver.ladder": {
 					"type": "array",
+					"description": "Which Claude model to use at how much of the window left, richest first. The first rung whose atLeast is met wins.",
+					"items": {
+						"type": "object",
+						"properties": {
+							"atLeast": {
+								"type": "number",
+								"description": "Remaining percentage threshold required to select this model."
+							},
+							"model": {
+								"type": "string",
+								"description": "Model ID to step down to."
+							}
+						}
+					},
 					"default": [
 						{
 							"atLeast": 70,
@@ -213,30 +322,145 @@
 							"atLeast": 30,
 							"model": "sonnet"
 						}
+					]
+				},
+				"localCliWorkers.managerModel": {
+					"type": "string",
+					"default": "local manager",
+					"description": "Legacy manager model identifier."
+				},
+				"localCliWorkers.defaultWorker": {
+					"type": "string",
+					"enum": [
+						"auto",
+						"codex",
+						"claude"
 					],
-					"description": "Which Claude model to use at how much of the window left, richest first. The first rung whose atLeast is met wins.",
+					"default": "auto",
+					"description": "Legacy default CLI worker."
+				},
+				"localCliWorkers.codexCommand": {
+					"type": "string",
+					"default": "codex",
+					"description": "Legacy OpenAI Codex CLI command."
+				},
+				"localCliWorkers.claudeCommand": {
+					"type": "string",
+					"default": "claude",
+					"description": "Legacy Claude CLI command."
+				},
+				"localCliWorkers.antigravityCommand": {
+					"type": "string",
+					"default": "agy",
+					"description": "Legacy Antigravity CLI command."
+				},
+				"localCliWorkers.antigravityLabel": {
+					"type": "string",
+					"enum": [
+						"Antigravity",
+						"AGY"
+					],
+					"default": "Antigravity",
+					"description": "Legacy status bar label for Antigravity."
+				},
+				"localCliWorkers.maxConcurrentTasks": {
+					"type": "number",
+					"default": 1,
+					"description": "Legacy maximum concurrent tasks."
+				},
+				"localCliWorkers.taskTimeoutMs": {
+					"type": "number",
+					"default": 600000,
+					"description": "Legacy task timeout in milliseconds."
+				},
+				"localCliWorkers.showWorkerTerminals": {
+					"type": "boolean",
+					"default": true,
+					"description": "Legacy option to show worker terminal output."
+				},
+				"localCliWorkers.failureThreshold": {
+					"type": "number",
+					"default": 3,
+					"description": "Legacy failure threshold before resting worker."
+				},
+				"localCliWorkers.usageThreshold": {
+					"type": "number",
+					"default": 0,
+					"description": "Legacy usage threshold."
+				},
+				"localCliWorkers.codexSandbox": {
+					"type": "string",
+					"enum": [
+						"read-only",
+						"workspace-write",
+						"danger-full-access"
+					],
+					"default": "read-only",
+					"description": "Legacy Codex sandbox level."
+				},
+				"localCliWorkers.limitedCooldownMs": {
+					"type": "number",
+					"default": 1800000,
+					"description": "Legacy cooldown duration when rate limited."
+				},
+				"localCliWorkers.codexModelId": {
+					"type": "string",
+					"default": "",
+					"description": "Legacy Codex model override."
+				},
+				"localCliWorkers.claudeModelId": {
+					"type": "string",
+					"default": "sonnet",
+					"description": "Legacy Claude model override."
+				},
+				"localCliWorkers.powerSaver.enabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Legacy power saver enabled switch."
+				},
+				"localCliWorkers.powerSaver.saverBelowPercent": {
+					"type": "number",
+					"default": 30,
+					"description": "Legacy power saver step-down threshold."
+				},
+				"localCliWorkers.powerSaver.ladder": {
+					"type": "array",
+					"description": "Legacy model step-down ladder.",
 					"items": {
 						"type": "object",
-						"required": [
-							"atLeast",
-							"model"
-						],
 						"properties": {
 							"atLeast": {
-								"type": "number",
-								"minimum": 0,
-								"maximum": 100,
-								"description": "Percent of the window still left."
+								"type": "number"
 							},
 							"model": {
-								"type": "string",
-								"description": "Model to pass to claude --model, e.g. fable, opus, sonnet, haiku."
+								"type": "string"
 							}
 						}
-					}
+					},
+					"default": [
+						{
+							"atLeast": 70,
+							"model": "fable"
+						},
+						{
+							"atLeast": 50,
+							"model": "opus"
+						},
+						{
+							"atLeast": 30,
+							"model": "sonnet"
+						}
+					]
 				}
 			}
-		}
+		},
+		"keybindings": [
+			{
+				"command": "aiSwitchboard.nextAccount",
+				"key": "ctrl+alt+a",
+				"mac": "cmd+alt+a"
+			}
+		]
 	},
 	"scripts": {
 		"compile": "tsc -p tsconfig.json",

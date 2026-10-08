@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import process from 'node:process';
 import { WorkerManager } from './manager';
 import { Conversation, StreamChunk, WorkerId, WorkerSelection } from './models';
 import { newConversation, addTurn, promptFor, recordAnswer } from './conversation';

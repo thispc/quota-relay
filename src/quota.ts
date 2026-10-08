@@ -42,7 +42,9 @@ export interface Quota {
   /** Percent of the window still available, lowest of the windows that matter. */
   remaining?: number;
   fiveHour?: number;
+  fiveHourResetsAt?: number;
   sevenDay?: number;
+  sevenDayResetsAt?: number;
   resetsAt?: number;
   /** Minutes since Claude last refreshed the figure. */
   ageMinutes?: number;
@@ -51,27 +53,110 @@ export interface Quota {
 
 const CACHE = join(homedir(), '.claude', 'usage-cache.json');
 
+export function parseClaudeResetTime(dateStr: string): number | undefined {
+  if (!dateStr) return undefined;
+  const direct = Date.parse(dateStr);
+  if (!isNaN(direct)) return direct;
+
+  const relMatch = dateStr.match(/in\s+(\d+)\s*(m|min|minute|h|hour|d|day)/i);
+  if (relMatch) {
+    const amount = parseInt(relMatch[1], 10);
+    const unit = relMatch[2].toLowerCase();
+    const ms = unit.startsWith('h') ? amount * 3600000 : unit.startsWith('d') ? amount * 86400000 : amount * 60000;
+    return Date.now() + ms;
+  }
+
+  const match = dateStr.match(/([A-Za-z]+)\s+(\d{1,2})\s+at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+  if (match) {
+    const [, monthStr, dayStr, hourStr, minStr, ampm] = match;
+    const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    const month = months.indexOf(monthStr.toLowerCase().slice(0, 3));
+    if (month >= 0) {
+      const now = new Date();
+      let hour = parseInt(hourStr, 10);
+      if (ampm.toLowerCase() === 'pm' && hour < 12) hour += 12;
+      if (ampm.toLowerCase() === 'am' && hour === 12) hour = 0;
+      const minute = minStr ? parseInt(minStr, 10) : 0;
+      const day = parseInt(dayStr, 10);
+      const date = new Date(now.getFullYear(), month, day, hour, minute);
+      if (date.getTime() < now.getTime() - 86400000) {
+        date.setFullYear(now.getFullYear() + 1);
+      }
+      return date.getTime();
+    }
+  }
+  return undefined;
+}
+
+export function parseClaudeUsageOutput(raw: string): Quota {
+  let text = raw;
+  try {
+    const json = JSON.parse(raw);
+    if (typeof json.result === 'string') {
+      text = json.result;
+    }
+  } catch {}
+
+  const sessionMatch = text.match(/Current session:\s*(\d+)%\s*used(?:\s*·\s*resets\s*([^\n\r]+))?/i);
+  const weekMatch = text.match(/Current week[^:]*:\s*(\d+)%\s*used(?:\s*·\s*resets\s*([^\n\r]+))?/i);
+
+  if (!sessionMatch && !weekMatch) {
+    return { error: 'Could not parse Claude CLI usage output' };
+  }
+
+  const sessionUsed = sessionMatch ? parseInt(sessionMatch[1], 10) : undefined;
+  const weekUsed = weekMatch ? parseInt(weekMatch[1], 10) : undefined;
+
+  const fiveHour = sessionUsed !== undefined ? Math.max(0, 100 - sessionUsed) : undefined;
+  const sevenDay = weekUsed !== undefined ? Math.max(0, 100 - weekUsed) : undefined;
+  const both = [fiveHour, sevenDay].filter((n): n is number => typeof n === 'number');
+  const remaining = both.length ? Math.min(...both) : undefined;
+
+  const fiveHourResetsAt = sessionMatch?.[2] ? parseClaudeResetTime(sessionMatch[2].trim()) : undefined;
+  const sevenDayResetsAt = weekMatch?.[2] ? parseClaudeResetTime(weekMatch[2].trim()) : undefined;
+  const resetsAt = (fiveHour ?? 100) <= (sevenDay ?? 100) ? fiveHourResetsAt : sevenDayResetsAt;
+
+  return {
+    remaining,
+    fiveHour,
+    sevenDay,
+    fiveHourResetsAt,
+    sevenDayResetsAt,
+    resetsAt,
+    ageMinutes: 0
+  };
+}
+
+/** The shape both ~/.claude/usage-cache.json and /api/oauth/usage carry. */
+export interface UsageWindows {
+  five_hour?: { utilization?: number; resets_at?: string | null } | null;
+  seven_day?: { utilization?: number; resets_at?: string | null } | null;
+}
+
+export function quotaFromUsage(data: UsageWindows, fetchedAt?: number): Quota {
+  const five = data.five_hour ?? undefined, week = data.seven_day ?? undefined;
+  const left = (u?: number) => (typeof u === 'number' ? Math.max(0, 100 - u) : undefined);
+  const fiveHour = left(five?.utilization), sevenDay = left(week?.utilization);
+  const both = [fiveHour, sevenDay].filter((n): n is number => typeof n === 'number');
+  // the window that runs out first is the one that decides
+  const tightest = both.length ? Math.min(...both) : undefined;
+  const at = (s?: string | null) => (s ? Date.parse(s) : undefined);
+  return {
+    remaining: tightest, fiveHour, sevenDay,
+    fiveHourResetsAt: at(five?.resets_at), sevenDayResetsAt: at(week?.resets_at),
+    resetsAt: (fiveHour ?? 100) <= (sevenDay ?? 100) ? at(five?.resets_at) : at(week?.resets_at),
+    ageMinutes: fetchedAt ? (Date.now() - fetchedAt) / 60000 : 0
+  };
+}
+
+/** What Claude Code last wrote to its own usage cache: the fallback when the account cannot be asked. */
 export function readQuota(path = CACHE): Quota {
   let raw: string;
   try { raw = readFileSync(path, 'utf-8'); }
   catch { return { error: 'no usage cache yet; run Claude Code once so it writes one' }; }
   try {
-    const j = JSON.parse(raw) as {
-      fetchedAt?: number;
-      data?: { five_hour?: { utilization?: number; resets_at?: string }; seven_day?: { utilization?: number; resets_at?: string } };
-    };
-    const five = j.data?.five_hour, week = j.data?.seven_day;
-    const left = (u?: number) => (typeof u === 'number' ? Math.max(0, 100 - u) : undefined);
-    const fiveHour = left(five?.utilization), sevenDay = left(week?.utilization);
-    const both = [fiveHour, sevenDay].filter((n): n is number => typeof n === 'number');
-    // the window that runs out first is the one that decides
-    const tightest = both.length ? Math.min(...both) : undefined;
-    const resets = (fiveHour ?? 100) <= (sevenDay ?? 100) ? five?.resets_at : week?.resets_at;
-    return {
-      remaining: tightest, fiveHour, sevenDay,
-      resetsAt: resets ? Date.parse(resets) : undefined,
-      ageMinutes: j.fetchedAt ? (Date.now() - j.fetchedAt) / 60000 : undefined
-    };
+    const j = JSON.parse(raw) as { fetchedAt?: number; data?: UsageWindows };
+    return quotaFromUsage(j.data ?? {}, j.fetchedAt);
   } catch { return { error: 'the usage cache is not readable JSON' }; }
 }
 

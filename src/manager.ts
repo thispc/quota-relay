@@ -31,6 +31,12 @@ export class WorkerManager {
     return false;
   }
 
+  /**
+   * Set by the extension: a worker's subscription is spent, so try another account on the same provider.
+   * Resolves true when it moved to one, and the task is retried on the same worker instead of falling back.
+   */
+  onSpent?: (worker: WorkerId, resetAt?: number) => Promise<boolean>;
+
   /** Set by the extension so routing can follow how much of Claude's window is left. */
   quotaPlan?: () => { worker: WorkerId; model?: string } | undefined;
 
@@ -76,18 +82,27 @@ export class WorkerManager {
     if (this.active.size >= this.maxConcurrent) throw new Error(`Concurrency limit reached (${this.maxConcurrent}).`);
     const attempts: WorkerId[] = [];
     const candidates = request.worker && request.worker !== 'auto' ? [request.worker] : [...this.usage.keys()];
-    const attempt = (index: number): Promise<TaskResult> => {
-      const worker = request.worker && request.worker !== 'auto' ? request.worker : this.choose('auto', attempts);
-      attempts.push(worker);
+    let accountMoves = 0;
+    const attempt = (index: number, again?: WorkerId): Promise<TaskResult> => {
+      const worker = again ?? (request.worker && request.worker !== 'auto' ? request.worker : this.choose('auto', attempts));
+      if (!again) attempts.push(worker);
       const stats = this.usage.get(worker)!; stats.running++;
       const taskId = this.nextId++;
       const handle = this.adapters[worker].run({ ...request, worker }, onChunk);
       this.active.set(taskId, { worker, handle });
       this.events.emit('started', { taskId, worker, request });
-      return handle.promise.then(result => {
+      return handle.promise.then(async result => {
         stats.running--; stats.completed++; stats.lastUsed = Date.now();
         stats.usage = { state: 'estimated', completedEstimate: stats.completed };
         stats.usageThresholdReached = this.usageThreshold > 0 && stats.completed >= this.usageThreshold;
+        this.active.delete(taskId);
+        if (result.rateLimited && accountMoves < 3 && this.onSpent && await this.onSpent(worker, result.resetAt).catch(() => false)) {
+          // another subscription on the same provider took over: same worker, fresh window. The session id
+          // stays valid because the history lives on this machine, not in the account.
+          accountMoves++;
+          this.events.emit('finished', { taskId, result });
+          return attempt(index, worker);
+        }
         if (result.rateLimited) {
           // the subscription's window is spent, which says nothing about this worker's health
           stats.limitedUntil = result.resetAt ?? Date.now() + this.limitedCooldownMs;
@@ -97,7 +112,6 @@ export class WorkerManager {
         } else if (result.exitCode !== 0) {
           stats.failures++; stats.available = stats.failures < this.failureThreshold;
         }
-        this.active.delete(taskId);
         this.events.emit('finished', { taskId, result });
         // fall back for a spent window or a worker-specific failure, never for a request the other worker
         // would reject the same way (bad flag, bad model, not signed in)

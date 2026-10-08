@@ -1,8 +1,8 @@
-# AI Switchboard: Quota Monitor & Model Router
+# Quota Relay
 
-**Intelligent quota monitoring, PowerSaver model routing, and agent task dispatching for Claude Code, Google Antigravity, and OpenAI Codex CLIs.**
+**Run two or more Claude subscriptions as one, and hand work on as each one runs out.**
 
-AI Switchboard preserves your AI subscriptions by monitoring remaining windows in real time, stepping down model tiers automatically as limits approach, and seamlessly delegating tasks to alternate providers before quotas run dry.
+Quota Relay keeps every Claude client on your machine on the account that has room: sign each subscription in once through the browser, then switch with a click in the status bar, or let it rotate on its own as windows fill and reset. It also watches Codex and Antigravity quotas, steps Claude down a model ladder as the pool empties, and delegates to another provider when every Claude account is spent.
 
 ---
 
@@ -21,8 +21,8 @@ AI Switchboard preserves your AI subscriptions by monitoring remaining windows i
     * **`separated` (Default)**: Clean micro-badges: `⚡ Claude (opus) | 🟢 Claude 47% | 🟢 Codex 88% | 🟢 AGY 89%`.
     * **`consolidated`**: A single compact pill: `⚡ Claude 47% (opus) · Codex 88% · AGY 89%`.
     * **`active-only`**: Minimalist mode showing only the current active worker and model.
-* **Interactive Switchboard QuickPick**:
-  * Click any status bar item or run `AI Switchboard: Show Model Quota & Usage` to view live quotas, countdowns, one-click refreshes, and worker switching.
+* **Interactive Quota QuickPick**:
+  * Click any status bar item or run `Quota Relay: Show Model Quota & Usage` to view live quotas, countdowns, one-click refreshes, and worker switching.
 * **Multi-Turn Agent Chat Panel**:
   * Unified workspace chat panel with Markdown rendering, syntax-highlighted code blocks, and one-click code copying.
 * **100% Local & Secure**:
@@ -32,7 +32,7 @@ AI Switchboard preserves your AI subscriptions by monitoring remaining windows i
 
 ## 👥 Two Claude subscriptions, used as one
 
-Click the **$(account) Claude** item in the status bar (or run **AI Switchboard: Claude Accounts**).
+Click the **$(account) Claude** item in the status bar (or run **Quota Relay: Claude Accounts**).
 
 * **Add an account**: pick *Add a Claude account…*, name it, and finish the login in the browser window that opens. The login you already have in Claude Code becomes your first account automatically.
 * **Switch by hand**: pick an account in the menu, or press `Cmd+Alt+A` (`Ctrl+Alt+A`) to go to the next one.
@@ -44,9 +44,9 @@ How it works: each account has a folder in `~/.claude-accounts/<name>`, and Clau
 
 | Setting | Default | |
 | :--- | :---: | :--- |
-| `aiSwitchboard.accounts.autoSwitch` | `true` | Move to the next account automatically |
-| `aiSwitchboard.accounts.switchBelowPercent` | `5` | Switch when the active account has this much or less left |
-| `aiSwitchboard.accounts.switchMargin` | `10` | Only switch to an account with at least this many points more |
+| `quotaRelay.accounts.autoSwitch` | `true` | Move to the next account automatically |
+| `quotaRelay.accounts.switchBelowPercent` | `5` | Switch when the active account has this much or less left |
+| `quotaRelay.accounts.switchMargin` | `10` | Only switch to an account with at least this many points more |
 
 ---
 
@@ -61,15 +61,15 @@ Ensure at least one of the official CLIs is installed and signed in:
 ### 2. Status Bar Modes
 Customize the status bar layout in VS Code Settings (`Cmd + ,`):
 ```json
-"aiSwitchboard.statusBarLayout": "separated" // Options: "separated" | "consolidated" | "active-only"
+"quotaRelay.statusBarLayout": "separated" // Options: "separated" | "consolidated" | "active-only"
 ```
 
 ### 3. Model Ladder Configuration
 Configure your custom model ladder in `settings.json`:
 ```json
-"aiSwitchboard.powerSaver.enabled": true,
-"aiSwitchboard.powerSaver.saverBelowPercent": 30,
-"aiSwitchboard.powerSaver.ladder": [
+"quotaRelay.powerSaver.enabled": true,
+"quotaRelay.powerSaver.saverBelowPercent": 30,
+"quotaRelay.powerSaver.ladder": [
   { "atLeast": 70, "model": "fable" },
   { "atLeast": 50, "model": "opus" },
   { "atLeast": 30, "model": "sonnet" }
@@ -82,18 +82,18 @@ Configure your custom model ladder in `settings.json`:
 
 | Command | Title | Description |
 | :--- | :--- | :--- |
-| `aiSwitchboard.accounts` | **AI Switchboard: Claude Accounts** | Switch, add (browser sign-in), re-sign-in, rename or remove accounts |
-| `aiSwitchboard.nextAccount` | **AI Switchboard: Switch to Next Claude Account** | `Cmd+Alt+A` |
-| `aiSwitchboard.showQuota` | **AI Switchboard: Show Model Quota & Usage** | Opens the interactive QuickPick modal with quotas and actions |
-| `aiSwitchboard.chat` | **AI Switchboard: Chat** | Opens the webview multi-turn agent chat panel |
-| `aiSwitchboard.newChat` | **AI Switchboard: New Conversation** | Clears the active chat thread |
-| `aiSwitchboard.runTask` | **AI Switchboard: Run Task** | Dispatches a prompt with workspace context to a worker |
-| `aiSwitchboard.cancelTask` | **AI Switchboard: Cancel Active Task** | Gracefully terminates running background agent CLI processes |
-| `aiSwitchboard.showWorkers` | **AI Switchboard: Show Worker Status** | Displays worker lifecycle statistics and completion counts |
-| `aiSwitchboard.checkAuth` | **AI Switchboard: Check CLI Authentication** | Tests local authentication credentials for all providers |
-| `aiSwitchboard.openWorkerTerminal` | **AI Switchboard: Open Worker Terminal** | Opens an interactive terminal for provider logins |
+| `quotaRelay.accounts` | **Quota Relay: Claude Accounts** | Switch, add (browser sign-in), re-sign-in, rename or remove accounts |
+| `quotaRelay.nextAccount` | **Quota Relay: Switch to Next Claude Account** | `Cmd+Alt+A` |
+| `quotaRelay.showQuota` | **Quota Relay: Show Model Quota & Usage** | Opens the interactive QuickPick modal with quotas and actions |
+| `quotaRelay.chat` | **Quota Relay: Chat** | Opens the webview multi-turn agent chat panel |
+| `quotaRelay.newChat` | **Quota Relay: New Conversation** | Clears the active chat thread |
+| `quotaRelay.runTask` | **Quota Relay: Run Task** | Dispatches a prompt with workspace context to a worker |
+| `quotaRelay.cancelTask` | **Quota Relay: Cancel Active Task** | Gracefully terminates running background agent CLI processes |
+| `quotaRelay.showWorkers` | **Quota Relay: Show Worker Status** | Displays worker lifecycle statistics and completion counts |
+| `quotaRelay.checkAuth` | **Quota Relay: Check CLI Authentication** | Tests local authentication credentials for all providers |
+| `quotaRelay.openWorkerTerminal` | **Quota Relay: Open Worker Terminal** | Opens an interactive terminal for provider logins |
 
-*(Legacy `localCliWorkers.*` command identifiers remain fully supported for backwards compatibility).*
+*Settings saved under the earlier names (`aiSwitchboard.*`, `localCliWorkers.*`) are still read.*
 
 ---
 
@@ -103,12 +103,12 @@ Configure your custom model ladder in `settings.json`:
 ```bash
 npm run compile
 npm test
-npm run package   # Generates ai-switchboard-0.1.0.vsix
+npm run package   # Generates quota-relay-0.1.0.vsix
 ```
 
 ### Installing locally:
 ```bash
-code --install-extension ai-switchboard-0.1.0.vsix --force
+code --install-extension quota-relay-0.1.0.vsix --force
 ```
 
 ### Publishing to VS Code Marketplace:
@@ -124,4 +124,4 @@ code --install-extension ai-switchboard-0.1.0.vsix --force
 ---
 
 ## 📄 License
-MIT © AI Switchboard Contributors
+MIT © Quota Relay Contributors

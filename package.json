@@ -1,13 +1,13 @@
 {
-	"name": "ai-switchboard",
-	"displayName": "AI Switchboard: Quota Monitor & Model Router",
-	"description": "Run two or more Claude subscriptions as one: browser sign-in, one-click and automatic account switching, plus quota monitoring and model routing for Claude Code, Codex and Antigravity.",
+	"name": "quota-relay",
+	"displayName": "Quota Relay: Claude Multi-Account Switcher & Quota Router",
+	"description": "Run two or more Claude subscriptions as one: browser sign-in, one-click and automatic account rotation as each runs out, plus quota monitoring and model routing for Claude Code, Codex and Antigravity.",
 	"version": "0.1.0",
-	"publisher": "local-cli-workers",
+	"publisher": "thispc",
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/thispc/vscode-openai-plugin"
+		"url": "https://github.com/thispc/quota-relay"
 	},
 	"engines": {
 		"vscode": "^1.88.0"
@@ -26,10 +26,10 @@
 		"rate limit",
 		"model router",
 		"powersaver",
-		"ai switchboard",
 		"llm",
 		"multiple accounts",
-		"account switcher"
+		"account switcher",
+		"quota relay"
 	],
 	"activationEvents": [
 		"onStartupFinished"
@@ -38,152 +38,92 @@
 	"contributes": {
 		"commands": [
 			{
-				"command": "aiSwitchboard.accounts",
-				"title": "AI Switchboard: Claude Accounts",
+				"command": "quotaRelay.accounts",
+				"title": "Quota Relay: Claude Accounts",
 				"icon": "$(account)"
 			},
 			{
-				"command": "aiSwitchboard.addAccount",
-				"title": "AI Switchboard: Add Claude Account (browser sign-in)"
+				"command": "quotaRelay.addAccount",
+				"title": "Quota Relay: Add Claude Account (browser sign-in)"
 			},
 			{
-				"command": "aiSwitchboard.nextAccount",
-				"title": "AI Switchboard: Switch to Next Claude Account"
+				"command": "quotaRelay.nextAccount",
+				"title": "Quota Relay: Switch to Next Claude Account"
 			},
 			{
-				"command": "aiSwitchboard.showQuota",
-				"title": "AI Switchboard: Show Model Quota & Usage"
+				"command": "quotaRelay.showQuota",
+				"title": "Quota Relay: Show Model Quota & Usage"
 			},
 			{
-				"command": "aiSwitchboard.chat",
-				"title": "AI Switchboard: Chat"
+				"command": "quotaRelay.chat",
+				"title": "Quota Relay: Chat"
 			},
 			{
-				"command": "aiSwitchboard.newChat",
-				"title": "AI Switchboard: New Conversation"
+				"command": "quotaRelay.newChat",
+				"title": "Quota Relay: New Conversation"
 			},
 			{
-				"command": "aiSwitchboard.chatInput",
-				"title": "AI Switchboard: Chat (Quick Prompt)"
+				"command": "quotaRelay.chatInput",
+				"title": "Quota Relay: Chat (Quick Prompt)"
 			},
 			{
-				"command": "aiSwitchboard.runTask",
-				"title": "AI Switchboard: Run Task"
+				"command": "quotaRelay.runTask",
+				"title": "Quota Relay: Run Task"
 			},
 			{
-				"command": "aiSwitchboard.cancelTask",
-				"title": "AI Switchboard: Cancel Active Task"
+				"command": "quotaRelay.cancelTask",
+				"title": "Quota Relay: Cancel Active Task"
 			},
 			{
-				"command": "aiSwitchboard.showWorkers",
-				"title": "AI Switchboard: Show Worker Status"
+				"command": "quotaRelay.showWorkers",
+				"title": "Quota Relay: Show Worker Status"
 			},
 			{
-				"command": "aiSwitchboard.checkAuth",
-				"title": "AI Switchboard: Check CLI Authentication"
+				"command": "quotaRelay.checkAuth",
+				"title": "Quota Relay: Check CLI Authentication"
 			},
 			{
-				"command": "aiSwitchboard.openWorkerTerminal",
-				"title": "AI Switchboard: Open Worker Terminal"
+				"command": "quotaRelay.openWorkerTerminal",
+				"title": "Quota Relay: Open Worker Terminal"
 			},
 			{
-				"command": "aiSwitchboard.resumeTask",
-				"title": "AI Switchboard: Resume Task"
+				"command": "quotaRelay.resumeTask",
+				"title": "Quota Relay: Resume Task"
 			},
 			{
-				"command": "aiSwitchboard.clearHistory",
-				"title": "AI Switchboard: Clear Task History"
+				"command": "quotaRelay.clearHistory",
+				"title": "Quota Relay: Clear Task History"
 			},
 			{
-				"command": "localCliWorkers.chat",
-				"title": "Local CLI Workers: Chat"
+				"command": "quotaRelay.refreshClaude",
+				"title": "Quota Relay: Refresh Claude Quota"
 			},
 			{
-				"command": "localCliWorkers.newChat",
-				"title": "Local CLI Workers: New Conversation"
+				"command": "quotaRelay.refreshCodex",
+				"title": "Quota Relay: Refresh Codex Quota"
 			},
 			{
-				"command": "localCliWorkers.chatInput",
-				"title": "Local CLI Workers: Chat (input box)"
+				"command": "quotaRelay.refreshAntigravity",
+				"title": "Quota Relay: Refresh Antigravity Quota"
 			},
 			{
-				"command": "localCliWorkers.showQuota",
-				"title": "Local CLI Workers: Show Model Quota & Usage (Claude, Codex, Antigravity)"
-			},
-			{
-				"command": "localCliWorkers.runTask",
-				"title": "Local CLI Workers: Run Task"
-			},
-			{
-				"command": "localCliWorkers.cancelTask",
-				"title": "Local CLI Workers: Cancel Active Task"
-			},
-			{
-				"command": "localCliWorkers.showWorkers",
-				"title": "Local CLI Workers: Show Worker Status"
-			},
-			{
-				"command": "localCliWorkers.checkAuth",
-				"title": "Local CLI Workers: Check CLI Authentication"
-			},
-			{
-				"command": "localCliWorkers.openWorkerTerminal",
-				"title": "Local CLI Workers: Open Worker Terminal"
-			},
-			{
-				"command": "localCliWorkers.resumeTask",
-				"title": "Local CLI Workers: Resume Task"
-			},
-			{
-				"command": "localCliWorkers.clearHistory",
-				"title": "Local CLI Workers: Clear Task History"
-			},
-			{
-				"command": "aiSwitchboard.refreshClaude",
-				"title": "AI Switchboard: Refresh Claude Quota"
-			},
-			{
-				"command": "aiSwitchboard.refreshCodex",
-				"title": "AI Switchboard: Refresh Codex Quota"
-			},
-			{
-				"command": "aiSwitchboard.refreshAntigravity",
-				"title": "AI Switchboard: Refresh Antigravity Quota"
-			},
-			{
-				"command": "aiSwitchboard.refreshAll",
-				"title": "AI Switchboard: Refresh All Quotas"
-			},
-			{
-				"command": "localCliWorkers.refreshClaude",
-				"title": "Local CLI Workers: Refresh Claude Quota"
-			},
-			{
-				"command": "localCliWorkers.refreshCodex",
-				"title": "Local CLI Workers: Refresh Codex Quota"
-			},
-			{
-				"command": "localCliWorkers.refreshAntigravity",
-				"title": "Local CLI Workers: Refresh Antigravity Quota"
-			},
-			{
-				"command": "localCliWorkers.refreshAll",
-				"title": "Local CLI Workers: Refresh All Quotas"
+				"command": "quotaRelay.refreshAll",
+				"title": "Quota Relay: Refresh All Quotas"
 			}
 		],
 		"viewsContainers": {
 			"activitybar": [
 				{
-					"id": "aiSwitchboard",
-					"title": "AI Switchboard",
-					"icon": "media/switchboard.svg"
+					"id": "quotaRelay",
+					"title": "Quota Relay",
+					"icon": "media/quota-relay.svg"
 				}
 			]
 		},
 		"views": {
-			"aiSwitchboard": [
+			"quotaRelay": [
 				{
-					"id": "localCliWorkers.tasks",
+					"id": "quotaRelay.tasks",
 					"name": "Agent Tasks",
 					"when": "workspaceFolderCount > 0"
 				}
@@ -192,33 +132,33 @@
 		"menus": {
 			"view/title": [
 				{
-					"command": "aiSwitchboard.runTask",
-					"when": "view == localCliWorkers.tasks",
+					"command": "quotaRelay.runTask",
+					"when": "view == quotaRelay.tasks",
 					"group": "navigation"
 				},
 				{
-					"command": "aiSwitchboard.clearHistory",
-					"when": "view == localCliWorkers.tasks",
+					"command": "quotaRelay.clearHistory",
+					"when": "view == quotaRelay.tasks",
 					"group": "navigation"
 				}
 			],
 			"view/item/context": [
 				{
-					"command": "aiSwitchboard.cancelTask",
-					"when": "view == localCliWorkers.tasks && viewItem == runningTask",
+					"command": "quotaRelay.cancelTask",
+					"when": "view == quotaRelay.tasks && viewItem == runningTask",
 					"group": "inline"
 				},
 				{
-					"command": "aiSwitchboard.resumeTask",
-					"when": "view == localCliWorkers.tasks && viewItem == task",
+					"command": "quotaRelay.resumeTask",
+					"when": "view == quotaRelay.tasks && viewItem == task",
 					"group": "inline"
 				}
 			]
 		},
 		"configuration": {
-			"title": "AI Switchboard",
+			"title": "Quota Relay",
 			"properties": {
-				"aiSwitchboard.statusBarLayout": {
+				"quotaRelay.statusBarLayout": {
 					"type": "string",
 					"enum": [
 						"separated",
@@ -228,26 +168,26 @@
 					"default": "separated",
 					"description": "Visual density of status bar quota indicators: 'separated' (clean micro-badges for each tool), 'consolidated' (single compact pill), or 'active-only' (minimalist active worker only)."
 				},
-				"aiSwitchboard.accounts.autoSwitch": {
+				"quotaRelay.accounts.autoSwitch": {
 					"type": "boolean",
 					"default": true,
 					"description": "Keep Claude on an account with room: when the active subscription is nearly spent, move every Claude client on this machine to the next one."
 				},
-				"aiSwitchboard.accounts.switchBelowPercent": {
+				"quotaRelay.accounts.switchBelowPercent": {
 					"type": "number",
 					"default": 5,
 					"minimum": 0,
 					"maximum": 100,
 					"description": "Move to another account when the active one has this much or less left of its tighter window (5-hour or weekly)."
 				},
-				"aiSwitchboard.accounts.switchMargin": {
+				"quotaRelay.accounts.switchMargin": {
 					"type": "number",
 					"default": 10,
 					"minimum": 0,
 					"maximum": 100,
 					"description": "Only move to an account with at least this many points more than the switch threshold, so a move is worth making."
 				},
-				"aiSwitchboard.defaultWorker": {
+				"quotaRelay.defaultWorker": {
 					"type": "string",
 					"enum": [
 						"auto",
@@ -257,12 +197,12 @@
 					"default": "auto",
 					"description": "Default CLI worker for running tasks."
 				},
-				"aiSwitchboard.antigravityCommand": {
+				"quotaRelay.antigravityCommand": {
 					"type": "string",
 					"default": "agy",
 					"description": "Command or binary path for the official Antigravity CLI (agy)."
 				},
-				"aiSwitchboard.antigravityLabel": {
+				"quotaRelay.antigravityLabel": {
 					"type": "string",
 					"enum": [
 						"Antigravity",
@@ -271,29 +211,29 @@
 					"default": "Antigravity",
 					"description": "Status bar label for Antigravity."
 				},
-				"aiSwitchboard.claudeCommand": {
+				"quotaRelay.claudeCommand": {
 					"type": "string",
 					"default": "claude",
 					"description": "Command or path for Claude Code CLI."
 				},
-				"aiSwitchboard.codexCommand": {
+				"quotaRelay.codexCommand": {
 					"type": "string",
 					"default": "codex",
 					"description": "Command or path for OpenAI Codex CLI."
 				},
-				"aiSwitchboard.powerSaver.enabled": {
+				"quotaRelay.powerSaver.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Step Claude models down and delegate to Codex as the five-hour window empties, rather than burning Opus to the floor."
 				},
-				"aiSwitchboard.powerSaver.saverBelowPercent": {
+				"quotaRelay.powerSaver.saverBelowPercent": {
 					"type": "number",
 					"default": 30,
 					"minimum": 0,
 					"maximum": 100,
 					"description": "Percent of Claude's window remaining at or below which work leaves Claude entirely and delegates to another provider."
 				},
-				"aiSwitchboard.powerSaver.ladder": {
+				"quotaRelay.powerSaver.ladder": {
 					"type": "array",
 					"description": "Which Claude model to use at how much of the window left, richest first. The first rung whose atLeast is met wins.",
 					"items": {
@@ -323,140 +263,12 @@
 							"model": "sonnet"
 						}
 					]
-				},
-				"localCliWorkers.managerModel": {
-					"type": "string",
-					"default": "local manager",
-					"description": "Legacy manager model identifier."
-				},
-				"localCliWorkers.defaultWorker": {
-					"type": "string",
-					"enum": [
-						"auto",
-						"codex",
-						"claude"
-					],
-					"default": "auto",
-					"description": "Legacy default CLI worker."
-				},
-				"localCliWorkers.codexCommand": {
-					"type": "string",
-					"default": "codex",
-					"description": "Legacy OpenAI Codex CLI command."
-				},
-				"localCliWorkers.claudeCommand": {
-					"type": "string",
-					"default": "claude",
-					"description": "Legacy Claude CLI command."
-				},
-				"localCliWorkers.antigravityCommand": {
-					"type": "string",
-					"default": "agy",
-					"description": "Legacy Antigravity CLI command."
-				},
-				"localCliWorkers.antigravityLabel": {
-					"type": "string",
-					"enum": [
-						"Antigravity",
-						"AGY"
-					],
-					"default": "Antigravity",
-					"description": "Legacy status bar label for Antigravity."
-				},
-				"localCliWorkers.maxConcurrentTasks": {
-					"type": "number",
-					"default": 1,
-					"description": "Legacy maximum concurrent tasks."
-				},
-				"localCliWorkers.taskTimeoutMs": {
-					"type": "number",
-					"default": 600000,
-					"description": "Legacy task timeout in milliseconds."
-				},
-				"localCliWorkers.showWorkerTerminals": {
-					"type": "boolean",
-					"default": true,
-					"description": "Legacy option to show worker terminal output."
-				},
-				"localCliWorkers.failureThreshold": {
-					"type": "number",
-					"default": 3,
-					"description": "Legacy failure threshold before resting worker."
-				},
-				"localCliWorkers.usageThreshold": {
-					"type": "number",
-					"default": 0,
-					"description": "Legacy usage threshold."
-				},
-				"localCliWorkers.codexSandbox": {
-					"type": "string",
-					"enum": [
-						"read-only",
-						"workspace-write",
-						"danger-full-access"
-					],
-					"default": "read-only",
-					"description": "Legacy Codex sandbox level."
-				},
-				"localCliWorkers.limitedCooldownMs": {
-					"type": "number",
-					"default": 1800000,
-					"description": "Legacy cooldown duration when rate limited."
-				},
-				"localCliWorkers.codexModelId": {
-					"type": "string",
-					"default": "",
-					"description": "Legacy Codex model override."
-				},
-				"localCliWorkers.claudeModelId": {
-					"type": "string",
-					"default": "sonnet",
-					"description": "Legacy Claude model override."
-				},
-				"localCliWorkers.powerSaver.enabled": {
-					"type": "boolean",
-					"default": true,
-					"description": "Legacy power saver enabled switch."
-				},
-				"localCliWorkers.powerSaver.saverBelowPercent": {
-					"type": "number",
-					"default": 30,
-					"description": "Legacy power saver step-down threshold."
-				},
-				"localCliWorkers.powerSaver.ladder": {
-					"type": "array",
-					"description": "Legacy model step-down ladder.",
-					"items": {
-						"type": "object",
-						"properties": {
-							"atLeast": {
-								"type": "number"
-							},
-							"model": {
-								"type": "string"
-							}
-						}
-					},
-					"default": [
-						{
-							"atLeast": 70,
-							"model": "fable"
-						},
-						{
-							"atLeast": 50,
-							"model": "opus"
-						},
-						{
-							"atLeast": 30,
-							"model": "sonnet"
-						}
-					]
 				}
 			}
 		},
 		"keybindings": [
 			{
-				"command": "aiSwitchboard.nextAccount",
+				"command": "quotaRelay.nextAccount",
 				"key": "ctrl+alt+a",
 				"mac": "cmd+alt+a"
 			}

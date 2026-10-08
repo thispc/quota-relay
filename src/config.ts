@@ -25,19 +25,17 @@ export interface WorkerConfig {
 }
 
 export function readConfig(): WorkerConfig {
-  const primary = vscode.workspace.getConfiguration('aiSwitchboard');
-  const legacy = vscode.workspace.getConfiguration('localCliWorkers');
+  // the current name first, then what earlier versions were called, so old settings keep working
+  const sections = ['quotaRelay', 'aiSwitchboard', 'localCliWorkers'].map(n => vscode.workspace.getConfiguration(n));
 
   function getSetting<T>(key: string, defaultValue: T): T {
-    const inspected = primary.inspect<T>(key);
-    if (inspected && (inspected.globalValue !== undefined || inspected.workspaceValue !== undefined || inspected.workspaceFolderValue !== undefined)) {
-      return primary.get<T>(key, defaultValue);
+    for (const sec of sections) {
+      const i = sec.inspect<T>(key);
+      if (i && (i.globalValue !== undefined || i.workspaceValue !== undefined || i.workspaceFolderValue !== undefined)) {
+        return sec.get<T>(key, defaultValue);
+      }
     }
-    const legacyInspected = legacy.inspect<T>(key);
-    if (legacyInspected && (legacyInspected.globalValue !== undefined || legacyInspected.workspaceValue !== undefined || legacyInspected.workspaceFolderValue !== undefined)) {
-      return legacy.get<T>(key, defaultValue);
-    }
-    return primary.get<T>(key, legacy.get<T>(key, defaultValue));
+    return sections[0].get<T>(key, defaultValue);
   }
 
   return {

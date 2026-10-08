@@ -35,7 +35,7 @@ class TaskItem extends vscode.TreeItem {
       task.status === 'cancelled' ? 'circle-slash' :
       task.status === 'running' ? 'loading~spin' : 'circle-large-outline'
     );
-    this.command = { command: 'aiSwitchboard.resumeTask', title: 'Resume Task', arguments: [task] };
+    this.command = { command: 'quotaRelay.resumeTask', title: 'Resume Task', arguments: [task] };
   }
 }
 
@@ -55,7 +55,7 @@ export function activate(context: vscode.ExtensionContext): void {
   manager = new WorkerManager(adapters, config.maxConcurrentTasks, config.failureThreshold, config.usageThreshold, config.limitedCooldownMs);
   contextState = context.workspaceState;
   taskTree = new TaskTreeProvider(() => contextState.get<AgentTask[]>(tasksKey, []));
-  output = vscode.window.createOutputChannel('AI Switchboard');
+  output = vscode.window.createOutputChannel('Quota Relay');
   switcher = new Switcher(output, () => readConfig().commands.claude);
   context.subscriptions.push(switcher, switcher.onDidChange(() => paintStatus()));
   manager.quotaPlan = () => {
@@ -81,11 +81,11 @@ export function activate(context: vscode.ExtensionContext): void {
   // Claude is the switcher's item; the other providers each get a badge
   codexUsageStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 98);
   codexUsageStatus.name = 'Codex Quota';
-  codexUsageStatus.command = 'aiSwitchboard.refreshCodex';
+  codexUsageStatus.command = 'quotaRelay.refreshCodex';
 
   antigravityUsageStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 97);
   antigravityUsageStatus.name = 'Antigravity Quota';
-  antigravityUsageStatus.command = 'aiSwitchboard.refreshAntigravity';
+  antigravityUsageStatus.command = 'quotaRelay.refreshAntigravity';
 
   codexUsageStatus.show();
   antigravityUsageStatus.show();
@@ -100,46 +100,44 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(codexUsageStatus, antigravityUsageStatus, output);
 
-  // Register commands with both new 'aiSwitchboard' prefix and legacy 'localCliWorkers' prefix
-  registerDualCommand(context, 'showQuota', (provider?: 'claude' | 'codex' | 'antigravity' | 'gemini') => {
+  registerCommand(context, 'showQuota', (provider?: 'claude' | 'codex' | 'antigravity' | 'gemini') => {
     return showQuotaQuickPick(provider);
   });
-  registerDualCommand(context, 'refreshClaude', () => refreshClaudeUsage());
+  registerCommand(context, 'refreshClaude', () => refreshClaudeUsage());
   for (const [id, fn] of [['accounts', () => switcher.menu()], ['addAccount', () => switcher.addAccount()],
                           ['nextAccount', () => switcher.next()]] as const) {
-    context.subscriptions.push(vscode.commands.registerCommand(`aiSwitchboard.${id}`, fn));
+    context.subscriptions.push(vscode.commands.registerCommand(`quotaRelay.${id}`, fn));
   }
-  registerDualCommand(context, 'refreshCodex', () => refreshCodexUsage());
-  registerDualCommand(context, 'refreshAntigravity', () => refreshAntigravityUsage());
-  registerDualCommand(context, 'refreshAll', () => refreshAllUsage());
-  registerDualCommand(context, 'chat', () => {
+  registerCommand(context, 'refreshCodex', () => refreshCodexUsage());
+  registerCommand(context, 'refreshAntigravity', () => refreshAntigravityUsage());
+  registerCommand(context, 'refreshAll', () => refreshAllUsage());
+  registerCommand(context, 'chat', () => {
     ChatPanel.show(context, manager, readConfig().modelIds as Record<string, string | undefined>, readConfig().taskTimeoutMs);
   });
-  registerDualCommand(context, 'chatInput', chat);
-  registerDualCommand(context, 'newChat', newChat);
-  registerDualCommand(context, 'runTask', runTask);
-  registerDualCommand(context, 'cancelTask', () => manager.cancelActive());
-  registerDualCommand(context, 'showWorkers', showWorkers);
-  registerDualCommand(context, 'checkAuth', checkAuth);
-  registerDualCommand(context, 'openWorkerTerminal', openWorkerTerminal);
-  registerDualCommand(context, 'resumeTask', (task: AgentTask) => runTask(task));
-  registerDualCommand(context, 'clearHistory', async () => {
+  registerCommand(context, 'chatInput', chat);
+  registerCommand(context, 'newChat', newChat);
+  registerCommand(context, 'runTask', runTask);
+  registerCommand(context, 'cancelTask', () => manager.cancelActive());
+  registerCommand(context, 'showWorkers', showWorkers);
+  registerCommand(context, 'checkAuth', checkAuth);
+  registerCommand(context, 'openWorkerTerminal', openWorkerTerminal);
+  registerCommand(context, 'resumeTask', (task: AgentTask) => runTask(task));
+  registerCommand(context, 'clearHistory', async () => {
     await contextState.update(tasksKey, []);
     taskTree.refresh();
   });
 
-  context.subscriptions.push(vscode.window.registerTreeDataProvider('localCliWorkers.tasks', taskTree));
+  context.subscriptions.push(vscode.window.registerTreeDataProvider('quotaRelay.tasks', taskTree));
 
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
-    if (e.affectsConfiguration('aiSwitchboard') || e.affectsConfiguration('localCliWorkers')) {
+    if (['quotaRelay', 'aiSwitchboard', 'localCliWorkers'].some(n => e.affectsConfiguration(n))) {
       paintStatus();
     }
   }));
 }
 
-function registerDualCommand(context: vscode.ExtensionContext, id: string, callback: (...args: any[]) => any): void {
-  context.subscriptions.push(vscode.commands.registerCommand(`aiSwitchboard.${id}`, callback));
-  context.subscriptions.push(vscode.commands.registerCommand(`localCliWorkers.${id}`, callback));
+function registerCommand(context: vscode.ExtensionContext, id: string, callback: (...args: any[]) => any): void {
+  context.subscriptions.push(vscode.commands.registerCommand(`quotaRelay.${id}`, callback));
 }
 
 // ---------------------------------------------------------------------------
@@ -539,9 +537,9 @@ async function showQuotaQuickPick(provider?: 'claude' | 'codex' | 'antigravity' 
         resetAntigravityCache();
         await switcher.tick(true);
         output.show(true);
-        output.appendLine('[AI Switchboard] Force-refreshing all provider quotas...');
+        output.appendLine('[Quota Relay] Force-refreshing all provider quotas...');
         paintStatus();
-        vscode.window.showInformationMessage('AI Switchboard: All quotas refreshed.');
+        vscode.window.showInformationMessage('Quota Relay: All quotas refreshed.');
       },
     },
     {
@@ -554,8 +552,8 @@ async function showQuotaQuickPick(provider?: 'claude' | 'codex' | 'antigravity' 
           { label: 'Codex', description: 'OpenAI Codex CLI', value: 'codex' as WorkerSelection }
         ], { placeHolder: 'Select default worker' });
         if (choice) {
-          await vscode.workspace.getConfiguration('aiSwitchboard').update('defaultWorker', choice.value, vscode.ConfigurationTarget.Global);
-          vscode.window.showInformationMessage(`AI Switchboard: Default worker set to ${choice.label}.`);
+          await vscode.workspace.getConfiguration('quotaRelay').update('defaultWorker', choice.value, vscode.ConfigurationTarget.Global);
+          vscode.window.showInformationMessage(`Quota Relay: Default worker set to ${choice.label}.`);
           paintStatus();
         }
       },
@@ -589,13 +587,13 @@ async function showQuotaQuickPick(provider?: 'claude' | 'codex' | 'antigravity' 
       label: '$(gear) Configure Settings & Ladders...',
       description: 'Adjust model thresholds, status bar layout, and CLI paths',
       action: () => {
-        void vscode.commands.executeCommand('workbench.action.openSettings', 'aiSwitchboard');
+        void vscode.commands.executeCommand('workbench.action.openSettings', 'quotaRelay');
       },
     },
   ];
 
   const selection = await vscode.window.showQuickPick(items, {
-    placeHolder: 'AI Switchboard: Model Router & Quota Hub',
+    placeHolder: 'Quota Relay: Model Router & Quota Hub',
     matchOnDescription: true,
     matchOnDetail: true,
   });
@@ -683,7 +681,7 @@ async function chat(): Promise<void> {
 async function newChat(): Promise<void> {
   await contextState.update(convKey, undefined);
   output.appendLine('\n-- new conversation --');
-  vscode.window.showInformationMessage('AI Switchboard: started a new conversation.');
+  vscode.window.showInformationMessage('Quota Relay: started a new conversation.');
 }
 
 async function saveTask(task: AgentTask): Promise<void> {

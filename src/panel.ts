@@ -42,7 +42,7 @@ export class ChatPanel {
       waiting => this.post({ type: 'queue', items: waiting }),
       error => this.post({ type: 'error', text: String(error) }),
       () => this.post({ type: 'idle' }));
-    this.panel = vscode.window.createWebviewPanel('localCliWorkers.chat', 'Workers Chat', vscode.ViewColumn.Beside,
+    this.panel = vscode.window.createWebviewPanel('quotaRelay.chat', 'Workers Chat', vscode.ViewColumn.Beside,
       { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [vscode.Uri.joinPath(ctx.extensionUri, 'media')] });
     this.panel.webview.html = this.html();
     this.panel.onDidDispose(() => { this.disposed = true; ChatPanel.current = undefined; });

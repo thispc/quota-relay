@@ -382,7 +382,7 @@ export function augmentedPath(): string {
 
 async function emptyDir(): Promise<string> {
   // started from VS Code's cwd (/), Claude indexed every file on the disk (29 Sep 2026)
-  const dir = join(tmpdir(), 'ai-switchboard-empty');
+  const dir = join(tmpdir(), 'quota-relay-empty');
   await mkdir(dir, { recursive: true }).catch(() => undefined);
   return dir;
 }

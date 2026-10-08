@@ -22,9 +22,9 @@ export class Switcher implements vscode.Disposable {
   readonly onDidChange = this.changed.event;
 
   constructor(private readonly out: vscode.OutputChannel, private readonly claudeCmd: () => string) {
-    this.item = vscode.window.createStatusBarItem('aiSwitchboard.claudeAccount', vscode.StatusBarAlignment.Left, 100);
+    this.item = vscode.window.createStatusBarItem('quotaRelay.claudeAccount', vscode.StatusBarAlignment.Left, 100);
     this.item.name = 'Claude Account';
-    this.item.command = 'aiSwitchboard.accounts';
+    this.item.command = 'quotaRelay.accounts';
     this.item.show();
   }
 
@@ -55,10 +55,10 @@ export class Switcher implements vscode.Disposable {
   }
 
   private policy(): Policy {
-    const c = vscode.workspace.getConfiguration('aiSwitchboard.accounts');
+    const c = vscode.workspace.getConfiguration('quotaRelay.accounts');
     return { switchBelow: c.get<number>('switchBelowPercent', 5), margin: c.get<number>('switchMargin', 10) };
   }
-  private auto(): boolean { return vscode.workspace.getConfiguration('aiSwitchboard.accounts').get<boolean>('autoSwitch', true); }
+  private auto(): boolean { return vscode.workspace.getConfiguration('quotaRelay.accounts').get<boolean>('autoSwitch', true); }
 
   /** The active account is read every few minutes; resting ones change only by refilling, so less often. */
   private stale(a: Account): boolean {
@@ -235,7 +235,7 @@ export class Switcher implements vscode.Disposable {
         { label: `$(${auto ? 'sync' : 'circle-slash'}) Auto-switch: ${auto ? 'on' : 'off'}`,
           description: pick.reason,
           detail: `Moves to the next account when the active one is under ${this.policy().switchBelow}% of its tighter window`,
-          run: () => vscode.workspace.getConfiguration('aiSwitchboard.accounts').update('autoSwitch', !auto, vscode.ConfigurationTarget.Global) });
+          run: () => vscode.workspace.getConfiguration('quotaRelay.accounts').update('autoSwitch', !auto, vscode.ConfigurationTarget.Global) });
     }
     items.push({ label: '', kind: vscode.QuickPickItemKind.Separator },
       { label: '$(add) Add a Claude account…', description: 'Sign in through the browser', run: () => this.addAccount() },

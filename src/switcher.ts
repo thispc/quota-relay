@@ -7,7 +7,7 @@ import {
   switchTo, waitForLogin
 } from './accounts';
 import { Quota } from './quota';
-import { CRITICAL, levelOf, tooltipTable, until, windowsText } from './badge';
+import { CRITICAL, levelOf, spareNote, tooltipTable, until, windowsText } from './badge';
 
 /**
  * The Claude accounts, as VS Code sees them: one status bar item, one menu, and a loop that keeps the active
@@ -310,7 +310,8 @@ export class Switcher implements vscode.Disposable {
     this.item.text = `$(account) ${several ? a.label : 'Claude'} ${a.needsLogin ? 'signed out' : windowsText(q)}${several && this.auto() ? ' $(sync)' : ''}`;
     this.item.color = level === 'critical' ? new vscode.ThemeColor('charts.red')
                     : level === 'low' ? new vscode.ThemeColor('charts.yellow')
-                    : level === 'ok' ? new vscode.ThemeColor('charts.green') : new vscode.ThemeColor('disabledForeground');
+                    : level === 'ok' ? new vscode.ThemeColor('charts.green')
+                    : level === 'spare' ? new vscode.ThemeColor('charts.blue') : new vscode.ThemeColor('disabledForeground');
     const rows = this.state.accounts.map(x => ({
       name: `${x.label}${x.plan ? ` · ${x.plan}` : ''}`, active: x.id === a.id, windows: this.readings[x.id]?.quota,
       note: x.needsLogin ? '⚠ signed out' : this.readings[x.id]?.quota?.error ? `⚠ ${this.readings[x.id]!.quota!.error}` : undefined
@@ -318,7 +319,8 @@ export class Switcher implements vscode.Disposable {
     const footer = several
       ? [this.holding() ?? `${chooseAccount(this.state.accounts, this.state.active, this.readings, this.policy()).reason}.`,
          `Auto-switch is ${this.auto() ? 'on' : 'off'}.`] : [];
-    const md = new vscode.MarkdownString(tooltipTable('Claude', rows, [...footer, '_Click to switch or add an account._']));
+    const spare = a.needsLogin ? undefined : spareNote(q);
+    const md = new vscode.MarkdownString(tooltipTable('Claude', rows, [...(spare ? [spare] : []), ...footer, '_Click to switch or add an account._']));
     md.supportHtml = true;
     this.item.tooltip = md;
   }

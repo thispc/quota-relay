@@ -14,7 +14,7 @@ export interface Windows {
   sevenDayResetsAt?: number;
 }
 
-export type Level = 'ok' | 'low' | 'critical' | 'unknown';
+export type Level = 'spare' | 'ok' | 'low' | 'critical' | 'unknown';
 
 /** At or under this much left a window is "low": coloured, and shown with its reset time. */
 export const LOW = 30;
@@ -44,12 +44,45 @@ export function windowsText(w: Windows | undefined, now = Date.now()): string {
   return parts.length ? parts.join(' · ') : '—';
 }
 
-/** The tighter window decides the colour: it is the one that stops the work. */
-export function levelOf(w: Windows | undefined): Level {
+const FIVE_HOURS = 5 * 3_600_000, WEEK = 7 * 86_400_000;
+/** This many points behind the clock, what is left will not be used up before the reset. */
+export const SPARE_GAP = 25;
+
+/**
+ * How far use is behind the clock, on the window where falling behind costs something: the week when there is
+ * one, since an unused 5-hour window is just a night's sleep. `used` and `elapsed` are percentages of that window.
+ */
+export function paceOf(w: Windows | undefined, now = Date.now()): { tag: string; used: number; elapsed: number } | undefined {
+  const week = typeof w?.sevenDay === 'number';
+  const left = week ? w!.sevenDay : w?.fiveHour;
+  if (typeof left !== 'number') return undefined;
+  const at = week ? w!.sevenDayResetsAt : w?.fiveHourResetsAt, span = week ? WEEK : FIVE_HOURS;
+  // no reset time means the window has not started counting: nothing used, nothing elapsed
+  const elapsed = at && at > now ? Math.max(0, Math.min(100, (1 - (at - now) / span) * 100)) : 0;
+  return { tag: week ? 'week' : '5-hour window', used: 100 - pct(left), elapsed: Math.round(elapsed) };
+}
+
+/**
+ * The tighter window decides the colour: it is the one that stops the work. With room on both, a subscription
+ * well behind the clock is marked as spare, because that allowance is lost at the reset if nothing uses it; so
+ * is one that has not been touched at all.
+ */
+export function levelOf(w: Windows | undefined, now = Date.now()): Level {
   const both = [w?.fiveHour, w?.sevenDay].filter((n): n is number => typeof n === 'number');
   if (!both.length) return 'unknown';
   const min = Math.min(...both);
-  return min <= CRITICAL ? 'critical' : min <= LOW ? 'low' : 'ok';
+  if (min <= CRITICAL) return 'critical';
+  if (min <= LOW) return 'low';
+  const pace = paceOf(w, now);
+  return pace && (pace.elapsed - pace.used >= SPARE_GAP || pace.used <= 5) ? 'spare' : 'ok';
+}
+
+/** A sentence for the tooltip when a subscription is marked spare. */
+export function spareNote(w: Windows | undefined, now = Date.now()): string | undefined {
+  const p = paceOf(w, now);
+  if (!p || levelOf(w, now) !== 'spare') return undefined;
+  return p.elapsed - p.used >= SPARE_GAP ? `Spare: ${p.used}% of the ${p.tag} used with ${p.elapsed}% of it gone. What is left is lost at the reset.`
+                                         : `Spare: barely touched this ${p.tag === 'week' ? 'week' : 'window'}.`;
 }
 
 /** A ten-step meter for tooltips: "▰▰▰▰▰▰▰▰▱▱". */

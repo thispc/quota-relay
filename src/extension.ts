@@ -5,7 +5,7 @@ import { say, newConversation } from './chat';
 import { ChatPanel } from './panel';
 import { readQuota, planFor } from './quota';
 import { Switcher } from './switcher';
-import { Level, Windows, levelOf, tooltipTable, until, windowsText } from './badge';
+import { Level, Windows, levelOf, spareNote, tooltipTable, until, windowsText } from './badge';
 import { readCodexUsage, CodexUsage } from './codex-usage';
 import { readAntigravityUsage, AntigravityUsage, resetAntigravityCache } from './antigravity-usage';
 import { Conversation, WorkerAdapter, WorkerId, AgentTask, WorkerSelection } from './models';
@@ -146,7 +146,7 @@ function registerCommand(context: vscode.ExtensionContext, id: string, callback:
 // ---------------------------------------------------------------------------
 
 const LEVEL_COLOR: Record<Level, vscode.ThemeColor | undefined> = {
-  ok: new vscode.ThemeColor('charts.green'), unknown: new vscode.ThemeColor('disabledForeground'),
+  spare: new vscode.ThemeColor('charts.blue'), ok: new vscode.ThemeColor('charts.green'), unknown: new vscode.ThemeColor('disabledForeground'),
   low: new vscode.ThemeColor('charts.yellow'), critical: new vscode.ThemeColor('charts.red')
 };
 
@@ -157,7 +157,7 @@ function paintBadge(item: vscode.StatusBarItem, icon: string, name: string, w: W
   item.text = `$(${icon}) ${name} ${windowsText(w)}`;
   item.color = LEVEL_COLOR[levelOf(w)];
   const md = new vscode.MarkdownString(tooltipTable(name, [{ name, windows: w, note: known ? undefined : `⚠ ${opts.error ?? 'usage not available'}` }],
-    [...(opts.notes ?? []), '_Click to refresh._']));
+    [...(spareNote(w) ? [spareNote(w)!] : []), ...(opts.notes ?? []), '_Click to refresh._']));
   md.supportHtml = true;
   item.tooltip = md;
 }

@@ -34,6 +34,8 @@ export interface Account {
 export interface AccountsState {
   accounts: Account[];
   active?: string;
+  /** An account picked by hand: auto-switch leaves it alone until it is actually spent or signed out. */
+  hold?: string;
   /** When we last moved logins, to tell a stray token refresh from someone running /login. */
   switchedAt?: number;
   /** A fingerprint of the refresh token we left in the home slot, to notice when something else replaces it. */
@@ -281,17 +283,19 @@ export async function adoptHome(s: AccountsState): Promise<AccountsState> {
     active: id, homeFp: fingerprint(creds)
   };
   await mkdir(join(ROOT, id), { recursive: true });
+  // its own copy of who it is, so the home record can be put right if a running session overwrites it
+  if (info) await writeAccountInfo(join(ROOT, id), info);
   await saveState(next);
   return next;
 }
 
-/** Make `to` the account every Claude client on this machine uses. */
-export async function switchTo(toId: string): Promise<AccountsState> {
+/** Make `to` the account every Claude client on this machine uses. `hold` marks it as picked by hand. */
+export async function switchTo(toId: string, hold = false): Promise<AccountsState> {
   return withLock(async () => {
     const s = await loadState();
     const to = s.accounts.find(a => a.id === toId);
     if (!to) throw new Error(`no account "${toId}"`);
-    if (s.active === toId) return s;
+    if (s.active === toId) { if (hold && s.hold !== toId) { s.hold = toId; await saveState(s); } return s; }
     const incoming = await readCreds(to.dir);
     if (!incoming?.claudeAiOauth?.accessToken) {
       to.needsLogin = true; await saveState(s);
@@ -317,6 +321,7 @@ export async function switchTo(toId: string): Promise<AccountsState> {
     }
     if (incomingInfo) await writeAccountInfo(undefined, incomingInfo);
     s.active = toId; s.switchedAt = Date.now(); s.homeFp = fingerprint(incoming);
+    s.hold = hold ? toId : undefined;
     await saveState(s);
     return s;
   });
@@ -334,7 +339,18 @@ export async function reconcileHome(): Promise<{ state: AccountsState; note?: st
     const s = await loadState();
     const home = await readCreds();
     const fp = fingerprint(home);
-    if (!fp || fp === s.homeFp) return { state: s };
+    if (fp && fp === s.homeFp) {
+      // The login is ours, but running sessions write ~/.claude.json from their own copy and can put the previous
+      // account's name back (seen 8 Oct 2026: the token was one account's, the record the other's). Set it right.
+      const active = s.accounts.find(a => a.id === s.active);
+      const shown = (await readAccountInfo())?.emailAddress;
+      if (active?.email && shown !== active.email) {
+        const own = await readAccountInfo(active.dir);
+        if (own?.emailAddress === active.email) await writeAccountInfo(undefined, own);
+      }
+      return { state: s };
+    }
+    if (!fp) return { state: s };
     const token = home?.claudeAiOauth?.accessToken;
     const owner = token ? await profileOf(token) : undefined;
     if (!owner?.email) return { state: s };             // cannot tell (offline, expired): look again next time
@@ -351,7 +367,7 @@ export async function reconcileHome(): Promise<{ state: AccountsState; note?: st
       }
     }
     if (known) {
-      s.active = known.id; s.homeFp = fp; known.needsLogin = false;
+      s.active = known.id; s.homeFp = fp; known.needsLogin = false; s.hold = undefined;
       // the outgoing account's login was overwritten in place; its parked copy may still work
       await saveState(s);
       return { state: s, note: `Claude was signed in to ${known.label} outside the switcher; following it.` };

@@ -2,7 +2,7 @@
 	"name": "quota-relay",
 	"displayName": "Quota Relay: Claude Multi-Account Switcher & Quota Router",
 	"description": "Run two or more Claude subscriptions as one: browser sign-in, one-click and automatic account rotation as each runs out, plus quota monitoring and model routing for Claude Code, Codex and Antigravity.",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"publisher": "thispc",
 	"license": "MIT",
 	"repository": {
@@ -158,16 +158,6 @@
 		"configuration": {
 			"title": "Quota Relay",
 			"properties": {
-				"quotaRelay.statusBarLayout": {
-					"type": "string",
-					"enum": [
-						"separated",
-						"consolidated",
-						"active-only"
-					],
-					"default": "separated",
-					"description": "Visual density of status bar quota indicators: 'separated' (clean micro-badges for each tool), 'consolidated' (single compact pill), or 'active-only' (minimalist active worker only)."
-				},
 				"quotaRelay.accounts.autoSwitch": {
 					"type": "boolean",
 					"default": true,
@@ -208,7 +198,7 @@
 						"Antigravity",
 						"AGY"
 					],
-					"default": "Antigravity",
+					"default": "AGY",
 					"description": "Status bar label for Antigravity."
 				},
 				"quotaRelay.claudeCommand": {

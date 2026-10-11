@@ -2,8 +2,6 @@ import * as vscode from 'vscode';
 import { WorkerId, WorkerSelection, WorkerProfile } from './models';
 import { QuotaThresholds, DEFAULT_THRESHOLDS } from './quota';
 
-export type StatusBarLayout = 'separated' | 'consolidated' | 'active-only';
-
 export interface WorkerConfig {
   managerModel: string;
   defaultWorker: WorkerSelection;
@@ -20,7 +18,6 @@ export interface WorkerConfig {
   thresholds: QuotaThresholds;
   antigravityCommand: string;
   antigravityLabel: string;
-  statusBarLayout: StatusBarLayout;
   profiles: Record<WorkerId, WorkerProfile>;
 }
 
@@ -46,8 +43,7 @@ export function readConfig(): WorkerConfig {
       claude: getSetting<string>('claudeCommand', 'claude')
     },
     antigravityCommand: getSetting<string>('antigravityCommand', 'agy'),
-    antigravityLabel: getSetting<string>('antigravityLabel', 'Antigravity'),
-    statusBarLayout: getSetting<StatusBarLayout>('statusBarLayout', 'separated'),
+    antigravityLabel: getSetting<string>('antigravityLabel', 'AGY'),
     codexSandbox: getSetting<string>('codexSandbox', 'read-only'),
     modelIds: {
       codex: getSetting<string>('codexModelId', '') || undefined,

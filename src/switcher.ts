@@ -7,6 +7,7 @@ import {
   switchTo, waitForLogin
 } from './accounts';
 import { Quota } from './quota';
+import { CRITICAL, levelOf, tooltipTable, until, windowsText } from './badge';
 
 /**
  * The Claude accounts, as VS Code sees them: one status bar item, one menu, and a loop that keeps the active
@@ -35,8 +36,8 @@ export class Switcher implements vscode.Disposable {
     this.readings = await loadReadings();
     this.paint();
     void this.tick();
-    // every two minutes; the readings themselves are reused for longer (see `stale`), across windows too
-    this.timer = setInterval(() => void this.tick(), 120_000);
+    // every minute; the readings themselves are reused for longer (see `stale`), across windows too
+    this.timer = setInterval(() => void this.tick(), 60_000);
   }
 
   get active(): Account | undefined { return this.state.accounts.find(a => a.id === this.state.active); }
@@ -60,10 +61,14 @@ export class Switcher implements vscode.Disposable {
   }
   private auto(): boolean { return vscode.workspace.getConfiguration('quotaRelay.accounts').get<boolean>('autoSwitch', true); }
 
-  /** The active account is read every few minutes; resting ones change only by refilling, so less often. */
+  /**
+   * The active account is read every few minutes, and every minute once it is nearly out, so the move happens
+   * before a long agent run hits the wall. Resting ones change only by refilling, so less often.
+   */
   private stale(a: Account): boolean {
     const r = this.readings[a.id];
-    const ttl = a.id === this.state.active ? 3 * 60_000 : 10 * 60_000;
+    const nearlyOut = (r?.quota?.remaining ?? 100) <= CRITICAL;
+    const ttl = a.id !== this.state.active ? 10 * 60_000 : nearlyOut ? 60_000 : 3 * 60_000;
     return !r || Date.now() - r.at > (r.quota?.error ? 60_000 : ttl);
   }
 
@@ -102,9 +107,12 @@ export class Switcher implements vscode.Disposable {
     if (this.state.accounts.length < 2) return;
     const pick = chooseAccount(this.state.accounts, this.state.active, this.readings, this.policy());
     if (!pick.switch || !pick.id) return;
+    const usableNow = this.active && !this.active.needsLogin && (this.activeQuota()?.remaining ?? 1) > 0;
+    // an account picked by hand stays until it is actually spent: the choice was deliberate (11 Oct 2026)
+    if (usableNow && this.state.hold === this.state.active) return;
     // one move per few minutes at most, unless the account we are on cannot be used at all
     const recent = this.state.switchedAt && Date.now() - this.state.switchedAt < 5 * 60_000;
-    if (recent && this.active && !this.active.needsLogin && (this.activeQuota()?.remaining ?? 1) > 0) return;
+    if (recent && usableNow) return;
     await this.switch(pick.id, pick.reason);
   }
 
@@ -118,10 +126,10 @@ export class Switcher implements vscode.Disposable {
     return this.switch(pick.id, `${cur?.label ?? 'Claude'} hit its limit mid-task`).then(() => true, () => false);
   }
 
-  async switch(id: string, why?: string): Promise<void> {
+  async switch(id: string, why?: string, byHand = false): Promise<void> {
     const from = this.active?.label;
     try {
-      this.state = await switchTo(id);
+      this.state = await switchTo(id, byHand);
     } catch (e) {
       this.tell(`Could not switch Claude account: ${e instanceof Error ? e.message : e}`, 'error');
       throw e;
@@ -226,14 +234,14 @@ export class Switcher implements vscode.Disposable {
         label: `${on ? '$(pass-filled)' : '$(circle-large-outline)'} ${a.label}`,
         description: [a.email, a.plan].filter(Boolean).join(' · '),
         detail: a.needsLogin ? '$(warning) Signed out: pick to sign in through the browser' : windows(q),
-        run: a.needsLogin ? () => this.relogin(a) : on ? undefined : () => this.switch(a.id, 'Switched by hand')
+        run: a.needsLogin ? () => this.relogin(a) : on ? undefined : () => this.switch(a.id, 'Picked by hand, so it stays until it runs out', true)
       });
     }
     if (this.state.accounts.length) {
       const pick = chooseAccount(this.state.accounts, this.state.active, this.readings, this.policy());
       items.push({ label: '', kind: vscode.QuickPickItemKind.Separator },
         { label: `$(${auto ? 'sync' : 'circle-slash'}) Auto-switch: ${auto ? 'on' : 'off'}`,
-          description: pick.reason,
+          description: this.holding() ?? pick.reason,
           detail: `Moves to the next account when the active one is under ${this.policy().switchBelow}% of its tighter window`,
           run: () => vscode.workspace.getConfiguration('quotaRelay.accounts').update('autoSwitch', !auto, vscode.ConfigurationTarget.Global) });
     }
@@ -254,7 +262,7 @@ export class Switcher implements vscode.Disposable {
     const list = this.state.accounts.filter(a => !a.needsLogin);
     if (list.length < 2) { void this.addAccount(); return; }
     const i = list.findIndex(a => a.id === this.state.active);
-    await this.switch(list[(i + 1) % list.length].id, 'Switched by hand');
+    await this.switch(list[(i + 1) % list.length].id, 'Picked by hand, so it stays until it runs out', true);
   }
 
   private async pickAccount(title: string): Promise<Account | undefined> {
@@ -297,21 +305,27 @@ export class Switcher implements vscode.Disposable {
       return;
     }
     const q = this.readings[a.id]?.quota;
-    const pct = q?.remaining;
     const several = this.state.accounts.length > 1;
-    this.item.text = `$(account) ${several ? a.label : 'Claude'} ${a.needsLogin ? 'signed out' : pct === undefined ? '…' : `${pct}%`}${several && this.auto() ? ' $(sync)' : ''}`;
-    this.item.color = a.needsLogin || (pct ?? 100) <= 15 ? new vscode.ThemeColor('charts.red')
-                    : (pct ?? 100) <= 30 ? new vscode.ThemeColor('charts.yellow') : undefined;
-    const md = new vscode.MarkdownString(undefined, true);
-    md.appendMarkdown('**Claude accounts**\n\n| | Account | 5-hour | Week |\n|:-:|:--|--:|--:|\n');
-    for (const x of this.state.accounts) {
-      const r = this.readings[x.id]?.quota;
-      const cell = (v?: number, at?: number) => v === undefined ? '—' : `${v}%${at ? ` · ${until(at)}` : ''}`;
-      md.appendMarkdown(`| ${x.id === a.id ? '●' : ''} | ${x.label}${x.plan ? ` (${x.plan})` : ''} | ${x.needsLogin ? 'signed out' : cell(r?.fiveHour, r?.fiveHourResetsAt)} | ${x.needsLogin ? '' : cell(r?.sevenDay, r?.sevenDayResetsAt)} |\n`);
-    }
-    if (several) md.appendMarkdown(`\n${chooseAccount(this.state.accounts, this.state.active, this.readings, this.policy()).reason}. Auto-switch is ${this.auto() ? 'on' : 'off'}.\n`);
-    md.appendMarkdown('\n_Click to switch or add an account._');
+    const level = a.needsLogin ? 'critical' : levelOf(q);
+    this.item.text = `$(account) ${several ? a.label : 'Claude'} ${a.needsLogin ? 'signed out' : windowsText(q)}${several && this.auto() ? ' $(sync)' : ''}`;
+    this.item.color = level === 'critical' ? new vscode.ThemeColor('charts.red')
+                    : level === 'low' ? new vscode.ThemeColor('charts.yellow') : undefined;
+    const rows = this.state.accounts.map(x => ({
+      name: `${x.label}${x.plan ? ` · ${x.plan}` : ''}`, active: x.id === a.id, windows: this.readings[x.id]?.quota,
+      note: x.needsLogin ? '⚠ signed out' : this.readings[x.id]?.quota?.error ? `⚠ ${this.readings[x.id]!.quota!.error}` : undefined
+    }));
+    const footer = several
+      ? [this.holding() ?? `${chooseAccount(this.state.accounts, this.state.active, this.readings, this.policy()).reason}.`,
+         `Auto-switch is ${this.auto() ? 'on' : 'off'}.`] : [];
+    const md = new vscode.MarkdownString(tooltipTable('Claude', rows, [...footer, '_Click to switch or add an account._']));
+    md.supportHtml = true;
     this.item.tooltip = md;
+  }
+
+  /** Says so when auto-switch is standing back for an account picked by hand. */
+  private holding(): string | undefined {
+    const a = this.active;
+    return a && this.state.hold === a.id && this.auto() ? `${a.label} was picked by hand: it stays until it runs out.` : undefined;
   }
 
   private log(line: string): void { this.out.appendLine(`[accounts] ${line}`); }
@@ -323,14 +337,10 @@ export class Switcher implements vscode.Disposable {
   }
 }
 
-function until(at: number): string {
-  const m = Math.max(0, Math.round((at - Date.now()) / 60_000));
-  return m < 60 ? `${m}m` : m < 48 * 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}` : `${Math.round(m / 1440)}d`;
-}
-
 function windows(q?: Quota): string {
   if (!q) return 'Usage not read yet';
   if (q.error) return `$(warning) ${q.error}`;
-  const part = (name: string, v?: number, at?: number) => v === undefined ? undefined : `${name} ${v}% left${at ? ` (resets in ${until(at)})` : ''}`;
-  return [part('5-hour', q.fiveHour, q.fiveHourResetsAt), part('week', q.sevenDay, q.sevenDayResetsAt)].filter(Boolean).join(' · ');
+  const back = (at?: number) => (at && at > Date.now() ? ` (back in ${until(at)})` : '');
+  const part = (tag: string, v?: number, at?: number) => v === undefined ? undefined : `${tag} ${Math.round(v)}% left${back(at)}`;
+  return [part('5h', q.fiveHour, q.fiveHourResetsAt), part('7d', q.sevenDay, q.sevenDayResetsAt)].filter(Boolean).join(' · ') || 'Usage not available';
 }

@@ -15,12 +15,11 @@ Quota Relay keeps every Claude client on your machine on the account that has ro
 * **Intelligent PowerSaver & Model Ladders**:
   * Dynamically steps down models as your window empties (e.g. `≥70% fable` &rarr; `≥50% opus` &rarr; `≥30% sonnet`).
   * When Claude reaches your safety floor (e.g. `<30%`), tasks automatically delegate to Codex to preserve Claude for complex reasoning.
-* **Clean, Modern Status Bar (No Clutter)**:
-  * Replaces awkward ASCII block meters with modern micro-badges color-coded by burn pace (`charts.green`, `charts.yellow`, `charts.red`).
-  * Multiple visual density modes:
-    * **`separated` (Default)**: Clean micro-badges: `⚡ Claude (opus) | 🟢 Claude 47% | 🟢 Codex 88% | 🟢 AGY 89%`.
-    * **`consolidated`**: A single compact pill: `⚡ Claude 47% (opus) · Codex 88% · AGY 89%`.
-    * **`active-only`**: Minimalist mode showing only the current active worker and model.
+* **One format for every subscription**:
+  * Each badge reads `Name 5h 86% · 7d 3%`: percent **left** of the 5-hour window, then of the week, always labelled and always in that order.
+  * A window at 30% or less also shows when it comes back (`7d 3% ↻2d`), and the badge turns yellow, then red at 15%, by whichever window is tighter.
+  * Hover for a table with a meter and the exact reset time of each window; for Claude, one row per account.
+  * Antigravity shows its Gemini allowance; its Claude & GPT allowance is in the tooltip.
 * **Interactive Quota QuickPick**:
   * Click any status bar item or run `Quota Relay: Show Model Quota & Usage` to view live quotas, countdowns, one-click refreshes, and worker switching.
 * **Multi-Turn Agent Chat Panel**:
@@ -35,7 +34,7 @@ Quota Relay keeps every Claude client on your machine on the account that has ro
 Click the **$(account) Claude** item in the status bar (or run **Quota Relay: Claude Accounts**).
 
 * **Add an account**: pick *Add a Claude account…*, name it, and finish the login in the browser window that opens. The login you already have in Claude Code becomes your first account automatically.
-* **Switch by hand**: pick an account in the menu, or press `Cmd+Alt+A` (`Ctrl+Alt+A`) to go to the next one.
+* **Switch by hand**: pick an account in the menu, or press `Cmd+Alt+A` (`Ctrl+Alt+A`) to go to the next one. An account you pick stays until it actually runs out; auto-switch does not move you off it early.
 * **Auto-switch** (on by default): the active account is used until its tighter window (5-hour or weekly) is under 5%, then everything moves to the account with room. While you use one account, the other refills, so they take turns. When choosing between fresh accounts, the one whose weekly allowance resets soonest goes first, because what it has left would be lost at the reset. If Claude hits its limit in the middle of a task, the task moves to the next account and runs again there, and only falls back to Codex when no account has room.
 
 A switch applies to **every Claude client on this Mac**: the terminal, the Claude Code VS Code extension, and this plugin's workers. Running sessions pick up the new login within about 30 seconds. History, settings, skills and MCP logins are shared, because only the Claude login moves.
@@ -58,13 +57,7 @@ Ensure at least one of the official CLIs is installed and signed in:
 * **Google Antigravity**: Official `agy` CLI installed in PATH or `~/.gemini/bin/agy`
 * **OpenAI Codex**: `codex` CLI
 
-### 2. Status Bar Modes
-Customize the status bar layout in VS Code Settings (`Cmd + ,`):
-```json
-"quotaRelay.statusBarLayout": "separated" // Options: "separated" | "consolidated" | "active-only"
-```
-
-### 3. Model Ladder Configuration
+### 2. Model Ladder Configuration
 Configure your custom model ladder in `settings.json`:
 ```json
 "quotaRelay.powerSaver.enabled": true,
@@ -103,12 +96,12 @@ Configure your custom model ladder in `settings.json`:
 ```bash
 npm run compile
 npm test
-npm run package   # Generates quota-relay-0.1.0.vsix
+npm run package   # Generates quota-relay-0.2.0.vsix
 ```
 
 ### Installing locally:
 ```bash
-code --install-extension quota-relay-0.1.0.vsix --force
+code --install-extension quota-relay-0.2.0.vsix --force
 ```
 
 ### Publishing to VS Code Marketplace:

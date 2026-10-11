@@ -309,7 +309,8 @@ export class Switcher implements vscode.Disposable {
     const level = a.needsLogin ? 'critical' : levelOf(q);
     this.item.text = `$(account) ${several ? a.label : 'Claude'} ${a.needsLogin ? 'signed out' : windowsText(q)}${several && this.auto() ? ' $(sync)' : ''}`;
     this.item.color = level === 'critical' ? new vscode.ThemeColor('charts.red')
-                    : level === 'low' ? new vscode.ThemeColor('charts.yellow') : undefined;
+                    : level === 'low' ? new vscode.ThemeColor('charts.yellow')
+                    : level === 'ok' ? new vscode.ThemeColor('charts.green') : new vscode.ThemeColor('disabledForeground');
     const rows = this.state.accounts.map(x => ({
       name: `${x.label}${x.plan ? ` · ${x.plan}` : ''}`, active: x.id === a.id, windows: this.readings[x.id]?.quota,
       note: x.needsLogin ? '⚠ signed out' : this.readings[x.id]?.quota?.error ? `⚠ ${this.readings[x.id]!.quota!.error}` : undefined

@@ -17,7 +17,7 @@ Quota Relay keeps every Claude client on your machine on the account that has ro
   * When Claude reaches your safety floor (e.g. `<30%`), tasks automatically delegate to Codex to preserve Claude for complex reasoning.
 * **One format for every subscription**:
   * Each badge reads `Name 5h 86% · 7d 3%`: percent **left** of the 5-hour window, then of the week, always labelled and always in that order.
-  * A window at 30% or less also shows when it comes back (`7d 3% ↻2d`), and the badge turns yellow, then red at 15%, by whichever window is tighter.
+  * A window at 30% or less also shows when it comes back (`7d 3% ↻2d`), and the badge is green when healthy, yellow at 30% or less and red at 15% or less, by whichever window is tighter. Grey means the usage could not be read.
   * Hover for a table with a meter and the exact reset time of each window; for Claude, one row per account.
   * Antigravity shows its Gemini allowance; its Claude & GPT allowance is in the tooltip.
 * **Interactive Quota QuickPick**:
@@ -96,12 +96,12 @@ Configure your custom model ladder in `settings.json`:
 ```bash
 npm run compile
 npm test
-npm run package   # Generates quota-relay-0.2.0.vsix
+npm run package   # Generates quota-relay-0.2.1.vsix
 ```
 
 ### Installing locally:
 ```bash
-code --install-extension quota-relay-0.2.0.vsix --force
+code --install-extension quota-relay-0.2.1.vsix --force
 ```
 
 ### Publishing to VS Code Marketplace:

@@ -146,7 +146,7 @@ function registerCommand(context: vscode.ExtensionContext, id: string, callback:
 // ---------------------------------------------------------------------------
 
 const LEVEL_COLOR: Record<Level, vscode.ThemeColor | undefined> = {
-  ok: undefined, unknown: new vscode.ThemeColor('disabledForeground'),
+  ok: new vscode.ThemeColor('charts.green'), unknown: new vscode.ThemeColor('disabledForeground'),
   low: new vscode.ThemeColor('charts.yellow'), critical: new vscode.ThemeColor('charts.red')
 };
 

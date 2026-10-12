@@ -3,7 +3,7 @@ import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   Account, AccountsState, Policy, Reading, ROOT, adoptHome, augmentedPath, chooseAccount, fingerprint, loadReadings,
-  loadState, profileOf, readAccountQuota, readCreds, reconcileHome, resolveClaude, saveReading, saveState, slug,
+  loadState, nextReadAt, applyRead, profileOf, readAccountQuota, readCreds, reconcileHome, resolveClaude, saveReading, saveState, slug,
   switchTo, waitForLogin
 } from './accounts';
 import { Quota } from './quota';
@@ -34,8 +34,11 @@ export class Switcher implements vscode.Disposable {
   async start(): Promise<void> {
     this.state = await adoptHome(await loadState());
     this.readings = await loadReadings();
+    // readings from before a failed attempt kept its numbers: a passing error sat where the numbers should be
+    for (const r of Object.values(this.readings)) if (r.quota?.error && r.quota.error !== 'signed out') { r.quota = undefined; r.at = 0; }
     this.paint();
-    void this.tick();
+    // windows restored together would otherwise all ask in the same second
+    setTimeout(() => void this.tick(), Math.random() * 15_000);
     // every minute; the readings themselves are reused for longer (see `stale`), across windows too
     this.timer = setInterval(() => void this.tick(), 60_000);
   }
@@ -61,15 +64,11 @@ export class Switcher implements vscode.Disposable {
   }
   private auto(): boolean { return vscode.workspace.getConfiguration('quotaRelay.accounts').get<boolean>('autoSwitch', true); }
 
-  /**
-   * The active account is read every few minutes, and every minute once it is nearly out, so the move happens
-   * before a long agent run hits the wall. Resting ones change only by refilling, so less often.
-   */
-  private stale(a: Account): boolean {
+  /** Due for a read. Asking by hand skips the schedule, but never within 20 seconds of the last attempt. */
+  private due(a: Account, force: boolean): boolean {
     const r = this.readings[a.id];
-    const nearlyOut = (r?.quota?.remaining ?? 100) <= CRITICAL;
-    const ttl = a.id !== this.state.active ? 10 * 60_000 : nearlyOut ? 60_000 : 3 * 60_000;
-    return !r || Date.now() - r.at > (r.quota?.error ? 60_000 : ttl);
+    if (force) return Date.now() - (r?.triedAt ?? 0) > 20_000;
+    return Date.now() >= nextReadAt(r, a.id === this.state.active);
   }
 
   /** One pass: notice outside changes, refresh what is stale, and move if the active account is spent. */
@@ -80,7 +79,7 @@ export class Switcher implements vscode.Disposable {
         const rec = await reconcileHome().catch(e => { this.log(`reconcile: ${e}`); return undefined; });
         if (rec) { this.state = rec.state; if (rec.note) this.tell(rec.note); }
         this.readings = { ...this.readings, ...(await loadReadings()) };   // another window may have read already
-        await Promise.all(this.state.accounts.filter(a => force || this.stale(a)).map(a => this.read(a)));
+        await Promise.all(this.state.accounts.filter(a => this.due(a, force)).map(a => this.read(a)));
         this.paint();
         if (this.auto()) await this.autoSwitch();
       } finally { this.busy = undefined; this.paint(); this.changed.fire(); }
@@ -89,11 +88,17 @@ export class Switcher implements vscode.Disposable {
   }
 
   private async read(a: Account): Promise<void> {
-    const quota = await readAccountQuota(a, a.id === this.state.active, this.claudeCmd())
-      .catch(e => ({ error: String(e instanceof Error ? e.message : e) }) as Quota);
-    const r = { quota, at: Date.now() };
+    // say so before asking, so another window that ticks in the same second does not ask as well
+    const claimed = { ...(this.readings[a.id] ?? { at: 0 }), triedAt: Date.now() };
+    this.readings[a.id] = claimed;
+    await saveReading(a.id, claimed).catch(() => undefined);
+    const got = await readAccountQuota(a, a.id === this.state.active, this.claudeCmd())
+      .catch(e => ({ error: String(e instanceof Error ? e.message : e), transient: true }));
+    const r = applyRead(claimed, got);
+    if (r.fails === 1 || (r.fails ?? 0) % 5 === 0 && r.fails) this.log(`${a.label}: ${r.note}; keeping the last reading and trying again later`);
     this.readings[a.id] = r;
     await saveReading(a.id, r).catch(() => undefined);
+    const quota = r.quota ?? {};
     const signedOut = quota.error === 'signed out';
     if (signedOut !== !!a.needsLogin) {
       a.needsLogin = signedOut;
@@ -233,7 +238,8 @@ export class Switcher implements vscode.Disposable {
       items.push({
         label: `${on ? '$(pass-filled)' : '$(circle-large-outline)'} ${a.label}`,
         description: [a.email, a.plan].filter(Boolean).join(' · '),
-        detail: a.needsLogin ? '$(warning) Signed out: pick to sign in through the browser' : windows(q),
+        detail: a.needsLogin ? '$(warning) Signed out: pick to sign in through the browser'
+              : q ? windows(q) + (this.readings[a.id]?.fails ? `  $(history) ${this.readings[a.id]!.note}` : '') : (this.staleNote(a) ?? 'Usage not read yet'),
         run: a.needsLogin ? () => this.relogin(a) : on ? undefined : () => this.switch(a.id, 'Picked by hand, so it stays until it runs out', true)
       });
     }
@@ -320,9 +326,19 @@ export class Switcher implements vscode.Disposable {
       ? [this.holding() ?? `${chooseAccount(this.state.accounts, this.state.active, this.readings, this.policy()).reason}.`,
          `Auto-switch is ${this.auto() ? 'on' : 'off'}.`] : [];
     const spare = a.needsLogin ? undefined : spareNote(q);
+    footer.unshift(...this.state.accounts.map(x => this.staleNote(x)).filter((n): n is string => !!n));
     const md = new vscode.MarkdownString(tooltipTable('Claude', rows, [...(spare ? [spare] : []), ...footer, '_Click to switch or add an account._']));
     md.supportHtml = true;
     this.item.tooltip = md;
+  }
+
+  /** When the numbers shown are older than the last attempt: how old, why, and when the next try is. */
+  private staleNote(x: Account): string | undefined {
+    const r = this.readings[x.id];
+    if (!r?.fails || x.needsLogin) return undefined;
+    const next = Math.max(0, nextReadAt(r, x.id === this.state.active) - Date.now());
+    const asOf = r.quota ? `shown as of ${until(Date.now() + (Date.now() - r.at))} ago` : 'no reading yet';
+    return `${x.label}: ${r.note ?? 'usage could not be read'}; ${asOf}, trying again in ${until(Date.now() + next)}.`;
   }
 
   /** Says so when auto-switch is standing back for an account picked by hand. */

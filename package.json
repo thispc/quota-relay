@@ -2,7 +2,7 @@
 	"name": "quota-relay",
 	"displayName": "Quota Relay: Claude Multi-Account Switcher & Quota Router",
 	"description": "Run two or more Claude subscriptions as one: browser sign-in, one-click and automatic account rotation as each runs out, plus quota monitoring and model routing for Claude Code, Codex and Antigravity.",
-	"version": "0.2.2",
+	"version": "0.2.3",
 	"publisher": "thispc",
 	"license": "MIT",
 	"repository": {

@@ -97,12 +97,12 @@ Configure your custom model ladder in `settings.json`:
 ```bash
 npm run compile
 npm test
-npm run package   # Generates quota-relay-0.2.2.vsix
+npm run package   # Generates quota-relay-0.2.3.vsix
 ```
 
 ### Installing locally:
 ```bash
-code --install-extension quota-relay-0.2.2.vsix --force
+code --install-extension quota-relay-0.2.3.vsix --force
 ```
 
 ### Publishing to VS Code Marketplace:

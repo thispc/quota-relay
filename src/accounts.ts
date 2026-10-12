@@ -148,12 +148,15 @@ export async function profileOf(token: string): Promise<Profile | undefined> {
   return a ? { email: a.email, plan: a.has_claude_max ? 'max' : a.has_claude_pro ? 'pro' : undefined } : undefined;
 }
 
+/** A reading that failed for a reason that passes on its own (busy service, no network): keep the last numbers. */
+export type QuotaRead = Quota & { transient?: boolean };
+
 /**
  * The account's windows. Read over HTTPS with the token it already has, which costs nothing and starts nothing;
  * only when that token has expired is Claude itself run (in an empty folder), because refreshing it is Claude's
  * job and doing it here would rotate the refresh token behind its back.
  */
-export async function readAccountQuota(acc: Account, isActive: boolean, claudeCmd: string): Promise<Quota> {
+export async function readAccountQuota(acc: Account, isActive: boolean, claudeCmd: string): Promise<QuotaRead> {
   const dir = isActive ? undefined : acc.dir;
   const creds = await readCreds(dir);
   const o = creds?.claudeAiOauth;
@@ -161,7 +164,11 @@ export async function readAccountQuota(acc: Account, isActive: boolean, claudeCm
   if ((o.expiresAt ?? 0) > Date.now() + 60_000) {
     const r = await api<{ five_hour?: unknown; seven_day?: unknown }>('/api/oauth/usage', o.accessToken).catch(() => undefined);
     if (r?.body) return quotaFromUsage(r.body as Parameters<typeof quotaFromUsage>[0]);
-    if (r?.status === 429) return { error: 'usage endpoint is rate limiting; try again shortly' };
+    // Busy or unreachable says nothing about the account. Reported as a failed account, with a retry every
+    // minute from each window, this kept the endpoint rate limiting for hours (12 Oct 2026).
+    if (!r) return { error: 'no connection', transient: true };
+    if (r.status === 429) return { error: 'the usage service is busy', transient: true };
+    if (r.status >= 500) return { error: `the usage service answered ${r.status}`, transient: true };
   }
   const env: NodeJS.ProcessEnv = { ...process.env, PATH: augmentedPath() };
   if (dir) env.CLAUDE_CONFIG_DIR = dir; else delete env.CLAUDE_CONFIG_DIR;
@@ -171,14 +178,46 @@ export async function readAccountQuota(acc: Account, isActive: boolean, claudeCm
     return { error: 'signed out' };
   }
   const q = parseClaudeUsageOutput(r.stdout);
-  return q.error ? { error: r.stderr.trim().split('\n').pop() || q.error } : q;
+  return q.error ? { error: 'usage could not be read', transient: true } : q;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
 // Which account should be active
 // ---------------------------------------------------------------------------------------------------------------
 
-export interface Reading { quota?: Quota; at: number; }
+export interface Reading {
+  /** The last numbers actually read; kept when a later attempt fails. */
+  quota?: Quota;
+  /** When `quota` was read. */
+  at: number;
+  /** When a read was last attempted, by any window. */
+  triedAt?: number;
+  /** Attempts that have failed in a row since `quota` was read. */
+  fails?: number;
+  /** Why the last attempt failed. */
+  note?: string;
+}
+
+/** Fold a new attempt into what was known: a passing failure keeps the numbers and counts towards backing off. */
+export function applyRead(prev: Reading | undefined, got: QuotaRead, now = Date.now()): Reading {
+  if (!got.transient) { const { transient: _t, ...quota } = got; return { quota, at: now, triedAt: now }; }
+  const kept = prev?.quota && (!prev.quota.error || prev.quota.error === 'signed out') ? prev.quota : undefined;
+  return { quota: kept, at: kept ? prev!.at : 0, triedAt: now, fails: (prev?.fails ?? 0) + 1, note: got.error };
+}
+
+/**
+ * When an account is next worth asking about.
+ *
+ * The usage endpoint rate limits a token that asks often, so each account is asked rarely: the active one every
+ * five minutes (three once it is nearly out, so the move comes before the wall), a resting one every fifteen,
+ * since it only changes by refilling. After a failure the wait doubles, 2 minutes up to 30.
+ */
+export function nextReadAt(r: Reading | undefined, isActive: boolean): number {
+  if (!r) return 0;
+  if (r.fails) return (r.triedAt ?? r.at) + Math.min(30, 2 ** r.fails) * 60_000;
+  const nearlyOut = (r.quota?.remaining ?? 100) <= 15;
+  return r.at + (!isActive ? 15 : nearlyOut ? 3 : 5) * 60_000;
+}
 
 export interface Policy {
   /** At or below this much of the tighter window left, move to another account. */

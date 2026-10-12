@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { Account, Reading, chooseAccount, fingerprint, keychainService, slug } from '../accounts';
+import { Account, Reading, applyRead, chooseAccount, fingerprint, keychainService, nextReadAt, slug } from '../accounts';
 import { WorkerManager } from '../manager';
 import { WorkerAdapter, TaskHandle, TaskRequest, AuthStatus, TaskResult } from '../models';
 import { Quota, quotaFromUsage } from '../quota';
@@ -116,4 +116,51 @@ test('account moves are capped, so a limit every account shares cannot loop', as
   const r = await manager.run({ prompt: 'hi', cwd: '.', worker: 'auto' }, () => {});
   assert.equal(claude.calls, 4, 'the first try and three moves');
   assert.equal(r.worker, 'codex');
+});
+
+const T = Date.parse('2026-10-12T02:00:00Z'), min = 60_000;
+
+test('a busy usage service does not blank the account', () => {
+  const good = applyRead(undefined, { fiveHour: 75, sevenDay: 6, remaining: 6 }, T);
+  const after = applyRead(good, { error: 'the usage service is busy', transient: true }, T + 5 * min);
+  assert.equal(after.quota?.sevenDay, 6, 'the last numbers stay on the badge');
+  assert.equal(after.at, T, 'and are dated when they were read');
+  assert.deepEqual([after.fails, after.note], [1, 'the usage service is busy']);
+  const r = chooseAccount([acc('a'), acc('b')], 'a', { a: after, b: at(100) });
+  assert.equal(r.reason.includes('signed out'), false, 'it is not treated as an account that cannot run');
+});
+
+test('a good reading clears the failures', () => {
+  const failed = applyRead(applyRead(undefined, { fiveHour: 75, remaining: 75 }, T), { error: 'no connection', transient: true }, T + min);
+  const back = applyRead(failed, { fiveHour: 70, remaining: 70 }, T + 9 * min);
+  assert.deepEqual([back.quota?.fiveHour, back.at, back.fails, back.note], [70, T + 9 * min, undefined, undefined]);
+});
+
+test('signed out is not a passing failure', () => {
+  const r = applyRead(applyRead(undefined, { fiveHour: 75, remaining: 75 }, T), { error: 'signed out' }, T + min);
+  assert.equal(r.quota?.error, 'signed out');
+});
+
+test('failures back off: 2, 4, 8, 16, then 30 minutes', () => {
+  let r: Reading | undefined = applyRead(undefined, { fiveHour: 75, remaining: 75 }, T);
+  const waits: number[] = [];
+  for (let i = 0; i < 6; i++) {
+    r = applyRead(r, { error: 'the usage service is busy', transient: true }, T);
+    waits.push((nextReadAt(r, true) - T) / min);
+  }
+  assert.deepEqual(waits, [2, 4, 8, 16, 30, 30]);
+});
+
+test('the active account is asked more often than a resting one, and more when nearly out', () => {
+  const r = (remaining: number): Reading => ({ quota: { remaining }, at: T });
+  assert.equal((nextReadAt(r(60), true) - T) / min, 5);
+  assert.equal((nextReadAt(r(10), true) - T) / min, 3, 'so the move comes before the wall');
+  assert.equal((nextReadAt(r(10), false) - T) / min, 15, 'a resting account only refills');
+  assert.equal(nextReadAt(undefined, true), 0, 'never read: now');
+});
+
+test('a first read that fails still backs off, with nothing to show', () => {
+  const r = applyRead(undefined, { error: 'no connection', transient: true }, T);
+  assert.deepEqual([r.quota, r.fails], [undefined, 1]);
+  assert.equal((nextReadAt(r, true) - T) / min, 2);
 });

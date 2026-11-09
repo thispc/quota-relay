@@ -6,7 +6,9 @@ import { ChatPanel } from './panel';
 import { readQuota, planFor } from './quota';
 import { Switcher } from './switcher';
 import { Level, Windows, levelOf, spareNote, tooltipTable, until, windowsText } from './badge';
-import { readCodexUsage, CodexUsage } from './codex-usage';
+import { CodexPool } from './codex-pool';
+import { CodexAccount, usable as codexUsable } from './codex-accounts';
+import { CodexAdapter } from './adapters';
 import { readAntigravityUsage, AntigravityUsage, resetAntigravityCache } from './antigravity-usage';
 import { Conversation, WorkerAdapter, WorkerId, AgentTask, WorkerSelection } from './models';
 import { WorkerManager } from './manager';
@@ -14,6 +16,7 @@ import { WorkerManager } from './manager';
 let manager: WorkerManager;
 let switcher: Switcher;
 let codexUsageStatus: vscode.StatusBarItem;
+let codexPool: CodexPool;
 let antigravityUsageStatus: vscode.StatusBarItem;
 let output: vscode.OutputChannel;
 let adapters: Record<WorkerId, WorkerAdapter>;
@@ -52,7 +55,9 @@ class TaskTreeProvider implements vscode.TreeDataProvider<TaskItem> {
 export function activate(context: vscode.ExtensionContext): void {
   extensionContext = context;
   const config = readConfig();
-  adapters = createAdapters(config.commands, config.codexSandbox, config.modelIds);
+  codexPool = new CodexPool(() => readConfig().commands.codex, line => output?.appendLine(`[codex] ${line}`));
+  // the plugin's own Codex work runs on whichever account has room, not only the one in ~/.codex
+  adapters = createAdapters(config.commands, config.codexSandbox, config.modelIds, () => codexPool.picked()?.home);
   manager = new WorkerManager(adapters, config.maxConcurrentTasks, config.failureThreshold, config.usageThreshold, config.limitedCooldownMs);
   contextState = context.workspaceState;
   taskTree = new TaskTreeProvider(() => contextState.get<AgentTask[]>(tasksKey, []));
@@ -65,7 +70,13 @@ export function activate(context: vscode.ExtensionContext): void {
     // across every signed-in account: the second subscription being full means there is no reason to save
     return planFor(switcher.poolQuota() ?? readQuota(), cfg.thresholds);
   };
-  manager.onSpent = async worker => worker === 'claude' && switcher.onSpent();
+  manager.onSpent = async worker => {
+    if (worker === 'claude') return switcher.onSpent();
+    const next = codexPool.markSpent((adapters.codex as CodexAdapter).lastHome);
+    if (next) output.appendLine(`>> Codex ran out on that account; the task moves to ${codexLabel(next)}.`);
+    paintStatus();
+    return !!next;
+  };
   void switcher.start();
 
   manager.events.on('limited', ({ worker, until, next, reason }: { worker: string; until: number; next?: string; reason?: string }) => {
@@ -93,9 +104,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
   paintStatus();
 
-  // Refresh periodically in background
+  // Refresh periodically in background; Codex reads start a process each, so they keep their own schedule
+  const refreshCodex = () => void codexPool.refresh().then(paintStatus, () => undefined);
+  setTimeout(refreshCodex, 2_000 + Math.random() * 15_000);
   const statusTimer = setInterval(() => {
     paintStatus();
+    refreshCodex();
   }, 60_000);
   context.subscriptions.push(new vscode.Disposable(() => clearInterval(statusTimer)));
 
@@ -162,10 +176,16 @@ function paintBadge(item: vscode.StatusBarItem, icon: string, name: string, w: W
   item.tooltip = md;
 }
 
-function codexWindows(codex: CodexUsage): Windows {
-  const left = (used?: number) => (used === undefined ? undefined : 100 - used);
-  return { fiveHour: left(codex.primary?.usedPercent), fiveHourResetsAt: codex.primary?.resetsAt,
-           sevenDay: left(codex.secondary?.usedPercent), sevenDayResetsAt: codex.secondary?.resetsAt };
+/** An account's name the way it is shown everywhere: its email when Codex told us, else its slot. */
+function codexLabel(a: CodexAccount): string {
+  const who = a.email ? a.email.replace(/@.*/, '') : a.label;
+  return a.mac ? `${who} (this Mac)` : `${who} (HAS ${a.label})`;
+}
+
+/** Codex as the Codex extension and terminal see it: the ~/.codex login. */
+function codexWindows(): Windows {
+  const mac = codexPool.accounts.find(a => a.mac);
+  return (mac && codexPool.limits(mac.id)) ?? {};
 }
 
 /**
@@ -179,15 +199,51 @@ function geminiWindows(agy: AntigravityUsage): Windows {
            sevenDay: week?.remainingPercent, sevenDayResetsAt: week?.resetsAt };
 }
 
+/**
+ * The Codex badge shows the ~/.codex login, because that is the one the Codex extension uses; when it cannot run
+ * and another account can, it says where the plugin's own Codex work is going instead. Codex's own "allowed"
+ * decides red, whatever the percentages say: an account can be out with room left on paper.
+ */
+function paintCodex(): void {
+  const accounts = codexPool.accounts;
+  const mac = accounts.find(a => a.mac);
+  const macLimits = mac ? codexPool.limits(mac.id) : undefined;
+  const picked = codexPool.picked();
+  const out = !!macLimits && !codexUsable(macLimits);
+  const w = codexWindows();
+  const elsewhere = out && picked && !picked.mac ? ` $(arrow-swap) ${codexLabel(picked).replace(/ \(.*/, '')}` : '';
+  codexUsageStatus.text = `$(${out ? 'circle-slash' : 'terminal'}) Codex ${macLimits?.signedOut ? 'signed out' : windowsText(w)}${elsewhere}`;
+  codexUsageStatus.color = out ? LEVEL_COLOR.critical : LEVEL_COLOR[levelOf(w)];
+  const rows = accounts.map(a => {
+    const l = codexPool.limits(a.id);
+    const note = !l ? (codexPool.reading(a.id)?.fails ? '⚠ could not be read yet' : 'not read yet')
+               : l.signedOut ? '⚠ signed out' : undefined;
+    return { name: `${codexLabel(a)}${a.plan ? ` · ${a.plan}` : ''}`, active: a.id === picked?.id, windows: l, note };
+  });
+  const footer: string[] = [];
+  for (const a of accounts) {
+    const l = codexPool.limits(a.id);
+    if (l && !l.signedOut && !codexUsable(l)) {
+      const back = [l.fiveHour === 0 ? l.fiveHourResetsAt : undefined, l.sevenDay === 0 ? l.sevenDayResetsAt : undefined]
+        .filter((t): t is number => !!t).sort((x, y) => y - x)[0];
+      footer.push(`⛔ ${codexLabel(a)} is out (${(l.reached ?? 'limit reached').replace(/_/g, ' ')})${back ? `, back in ${until(back)}` : ''}.`);
+    }
+  }
+  if (picked) footer.push(`● Codex work from this plugin goes to ${codexLabel(picked)}.`);
+  if (out && picked && !picked.mac) footer.push('The Codex extension still uses this Mac\'s login.');
+  if (accounts.length < 2) footer.push('_Add another Codex account in Hire a Service (Accounts → Add) and it appears here._');
+  footer.push('_Click to refresh._');
+  const md = new vscode.MarkdownString(tooltipTable('Codex', rows, footer));
+  md.supportHtml = true;
+  codexUsageStatus.tooltip = md;
+}
+
 function paintStatus(): void {
   if (!codexUsageStatus || !antigravityUsageStatus) return;
   const cfg = readConfig();
-  const codex = readCodexUsage();
   const agy = readAntigravityUsage({ command: cfg.antigravityCommand });
 
-  const codexNotes = codex.requests > 0 || codex.totalTokens > 0
-    ? [`${codex.requests} requests · ${(codex.totalTokens / 1_000_000).toFixed(1)}M tokens${codex.lastModel ? ` · ${codex.lastModel}` : ''}`] : [];
-  paintBadge(codexUsageStatus, 'terminal', 'Codex', codexWindows(codex), { error: codex.error, notes: codexNotes });
+  paintCodex();
 
   const third = agy.claudeGpt?.fiveHour;
   const agyNotes = [
@@ -207,9 +263,10 @@ async function refreshClaudeUsage(showFeedback = true): Promise<void> {
 }
 
 async function refreshCodexUsage(showFeedback = true): Promise<void> {
-  const codex = readCodexUsage();
+  codexUsageStatus.text = '$(sync~spin) Codex';
+  await codexPool.refresh(true);
   paintStatus();
-  if (showFeedback) vscode.window.setStatusBarMessage(`$(check) Codex ${windowsText(codexWindows(codex))}`, 5000);
+  if (showFeedback) vscode.window.setStatusBarMessage(`$(check) Codex ${windowsText(codexWindows())}`, 5000);
 }
 
 async function refreshAntigravityUsage(showFeedback = true): Promise<void> {
@@ -244,10 +301,9 @@ function nextReset(w: Windows): string | undefined {
 async function showQuotaQuickPick(provider?: 'claude' | 'codex' | 'antigravity' | 'gemini'): Promise<void> {
   const cfg = readConfig();
   const q = switcher.activeQuota() ?? readQuota();
-  const codex = readCodexUsage();
   const agy = readAntigravityUsage({ command: cfg.antigravityCommand, forceRefresh: true });
 
-  const codexW = codexWindows(codex), geminiW = geminiWindows(agy);
+  const codexW = codexWindows(), geminiW = geminiWindows(agy);
   const pool = switcher.poolQuota();
 
   const plan = manager?.quotaPlan?.() ?? { worker: cfg.defaultWorker === 'auto' ? 'claude' : cfg.defaultWorker, model: cfg.modelIds.claude ?? 'sonnet' };
@@ -281,7 +337,7 @@ async function showQuotaQuickPick(provider?: 'claude' | 'codex' | 'antigravity' 
     {
       label: `$(terminal) Codex   ${windowsText(codexW)}`,
       description: nextReset(codexW),
-      detail: `${codex.requests} requests · ${codex.totalTokens ? `${Math.round(codex.totalTokens / 1000)}k` : '0'} tokens`,
+      detail: codexPool.accounts.map(a => `${codexLabel(a)}: ${codexUsable(codexPool.limits(a.id)) ? windowsText(codexPool.limits(a.id)) : 'out'}`).join(' · '),
     },
     {
       label: `$(sparkle) ${cfg.antigravityLabel || 'AGY'}   ${windowsText(geminiW)}`,

@@ -11,7 +11,7 @@ Quota Relay keeps every Claude client on your machine on the account that has ro
 * **Real-time Quota Telemetry**:
   * **Claude Code**: Live 5-hour and 7-day rate-limit tracking via official CLI calls with in-memory caching and reset countdowns.
   * **Google Antigravity**: Dual-group tracking across native Gemini models and 3P models (Claude 3.7 / GPT-4o), plus local conversation and step counts.
-  * **OpenAI Codex**: 5-hour and 7-day token utilization and request tracking.
+  * **OpenAI Codex**: live 5-hour and weekly limits for every Codex account, read from Codex itself, including whether Codex will accept work at all.
 * **Intelligent PowerSaver & Model Ladders**:
   * Dynamically steps down models as your window empties (e.g. `≥70% fable` &rarr; `≥50% opus` &rarr; `≥30% sonnet`).
   * When Claude reaches your safety floor (e.g. `<30%`), tasks automatically delegate to Codex to preserve Claude for complex reasoning.
@@ -47,6 +47,21 @@ How it works: each account has a folder in `~/.claude-accounts/<name>`, and Clau
 | `quotaRelay.accounts.autoSwitch` | `true` | Move to the next account automatically |
 | `quotaRelay.accounts.switchBelowPercent` | `5` | Switch when the active account has this much or less left |
 | `quotaRelay.accounts.switchMargin` | `10` | Only switch to an account with at least this many points more |
+
+## ⌨️ Several Codex accounts
+
+Codex accounts signed in through **Hire a Service** (Accounts → Add, which runs Codex's own browser sign-in into
+`~/.hire/accounts/codex/<slot>`) appear next to this Mac's login (`~/.codex`) on their own; there is nothing to add
+here.
+
+* **The badge** shows this Mac's login, since that is the one the Codex extension uses. When Codex says that login
+  is out, the badge turns red with ⊘ even if a percentage still looks fine, and names the account the plugin's own
+  Codex work moved to (`⇄ name`). Hover for every account.
+* **The plugin's Codex work** (chat panel, tasks, delegation from Claude) runs on this Mac's login while it can, and
+  otherwise on the account with room. A task that runs out mid-way is run again on the next account.
+* **How it reads usage:** Codex's own app-server (`account/rateLimits/read`), started once per account every few
+  minutes. Codex refreshes its own login; Quota Relay never reads or writes a Codex token, and only reads HAS's
+  folders.
 
 ---
 
@@ -97,12 +112,12 @@ Configure your custom model ladder in `settings.json`:
 ```bash
 npm run compile
 npm test
-npm run package   # Generates quota-relay-0.2.3.vsix
+npm run package   # Generates quota-relay-0.3.0.vsix
 ```
 
 ### Installing locally:
 ```bash
-code --install-extension quota-relay-0.2.3.vsix --force
+code --install-extension quota-relay-0.3.0.vsix --force
 ```
 
 ### Publishing to VS Code Marketplace:

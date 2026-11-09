@@ -73,7 +73,7 @@ export class LocalCliAdapter implements WorkerAdapter {
         // stdin must be closed, not inherited: spawned without a tty both CLIs sit waiting for piped input
         // ("no stdin data received in 3s") and the prompt in argv is never run.
         child = spawn(this.command, this.argumentsFor(request.prompt, request.resumeId), {
-          cwd: request.cwd, shell: false, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe']
+          cwd: request.cwd, shell: false, env: { ...process.env, ...this.envFor() }, stdio: ['ignore', 'pipe', 'pipe']
         });
       } catch (error) {
         reject(new Error(`Unable to start ${this.id}: ${String(error)}`)); return;
@@ -132,13 +132,23 @@ export class LocalCliAdapter implements WorkerAdapter {
   }
 
   protected argumentsFor(prompt: string, _resumeId?: string): string[] { return ['--prompt', prompt]; }
+  /** Settings this worker's process needs on top of VS Code's own, decided when the task starts. */
+  protected envFor(): NodeJS.ProcessEnv { return {}; }
   protected authArguments(): string[] { return ['auth', 'status']; }
   /** The provider's session id and token counts, dug out of whatever the CLI printed. */
   protected readMeta(_output: string): { sessionId?: string; tokens?: { input?: number; output?: number } } { return {}; }
 }
 
 export class CodexAdapter extends LocalCliAdapter {
-  constructor(command: string, private readonly sandbox = 'read-only', model?: string) { super('codex', command, model); }
+  /** The account folder the last task ran with, so a spent window can be pinned on the right account. */
+  lastHome?: string;
+  constructor(command: string, private readonly sandbox = 'read-only', model?: string,
+              /** Which Codex account to run on (CODEX_HOME); asked at the start of every task. */
+              private readonly home?: () => string | undefined) { super('codex', command, model); }
+  protected envFor(): NodeJS.ProcessEnv {
+    this.lastHome = this.home?.();
+    return this.lastHome ? { CODEX_HOME: this.lastHome } : {};
+  }
   // `exec -- <prompt>` makes codex wait on stdin instead of reading the prompt, and it refuses to run outside
   // a trusted git repo. The prompt is positional, and the sandbox is stated so nothing waits for approval.
   protected argumentsFor(prompt: string, resumeId?: string): string[] {
@@ -225,7 +235,8 @@ export class ClaudeAdapter extends LocalCliAdapter {
 }
 
 export function createAdapters(commands: Record<WorkerId, string>, codexSandbox = 'read-only',
-                               models: Partial<Record<WorkerId, string>> = {}): Record<WorkerId, WorkerAdapter> {
-  return { codex: new CodexAdapter(commands.codex, codexSandbox, models.codex),
+                               models: Partial<Record<WorkerId, string>> = {},
+                               codexHome?: () => string | undefined): Record<WorkerId, WorkerAdapter> {
+  return { codex: new CodexAdapter(commands.codex, codexSandbox, models.codex, codexHome),
            claude: new ClaudeAdapter(commands.claude, models.claude) };
 }

@@ -57,6 +57,12 @@ here.
 * **The badge** shows this Mac's login, since that is the one the Codex extension uses. When Codex says that login
   is out, the badge turns red with ⊘ even if a percentage still looks fine, and names the account the plugin's own
   Codex work moved to (`⇄ name`). Hover for every account.
+* **Switching** goes through Hire a Service, which holds those accounts: `hire ai use codex <slot>` trades the two
+  logins' places, so this Mac's `~/.codex` (the Codex extension's) gets the account with room and the spent one
+  rests in the slot. With `quotaRelay.codex.autoSwitch` on (the default) this happens when this Mac's login runs
+  out; it is re-read first, one window at a time, so an old reading never swaps a spent login back in. A running
+  Codex follows on its own: it re-reads its login before refreshing it. Click the badge to switch by hand or to add
+  an account (`hire ai connect codex`).
 * **The plugin's Codex work** (chat panel, tasks, delegation from Claude) runs on this Mac's login while it can, and
   otherwise on the account with room. A task that runs out mid-way is run again on the next account.
 * **How it reads usage:** Codex's own app-server (`account/rateLimits/read`), started once per account every few
@@ -112,12 +118,12 @@ Configure your custom model ladder in `settings.json`:
 ```bash
 npm run compile
 npm test
-npm run package   # Generates quota-relay-0.3.0.vsix
+npm run package   # Generates quota-relay-0.4.0.vsix
 ```
 
 ### Installing locally:
 ```bash
-code --install-extension quota-relay-0.3.0.vsix --force
+code --install-extension quota-relay-0.4.0.vsix --force
 ```
 
 ### Publishing to VS Code Marketplace:

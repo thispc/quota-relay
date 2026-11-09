@@ -2,7 +2,7 @@
 	"name": "quota-relay",
 	"displayName": "Quota Relay: Claude Multi-Account Switcher & Quota Router",
 	"description": "Run two or more Claude subscriptions as one: browser sign-in, one-click and automatic account rotation as each runs out, plus quota monitoring and model routing for Claude Code, Codex and Antigravity.",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"publisher": "thispc",
 	"license": "MIT",
 	"repository": {
@@ -49,6 +49,10 @@
 			{
 				"command": "quotaRelay.nextAccount",
 				"title": "Quota Relay: Switch to Next Claude Account"
+			},
+			{
+				"command": "quotaRelay.codexAccounts",
+				"title": "Quota Relay: Codex Accounts"
 			},
 			{
 				"command": "quotaRelay.showQuota",
@@ -176,6 +180,11 @@
 					"minimum": 0,
 					"maximum": 100,
 					"description": "Only move to an account with at least this many points more than the switch threshold, so a move is worth making."
+				},
+				"quotaRelay.codex.autoSwitch": {
+					"type": "boolean",
+					"default": true,
+					"description": "When this Mac's Codex login runs out and an account added through Hire a Service has room, have Hire a Service make that account this Mac's login (the two trade places). The Codex extension follows within a minute."
 				},
 				"quotaRelay.defaultWorker": {
 					"type": "string",

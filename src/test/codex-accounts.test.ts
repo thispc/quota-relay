@@ -88,11 +88,18 @@ test('reads are spaced: 5 minutes for the account in use, 15 for others, backing
 
 function pool(limits: Record<string, CodexLimits>) {
   let saved: Record<string, unknown> = {};
-  const reads: string[] = [];
+  const reads: string[] = [], hired: string[][] = [];
   const p = new CodexPool(() => 'codex', () => undefined, () => [acc('mac', true), acc('has:account_2')],
     async home => { reads.push(home); return limits[home.replace('/h/', '')] ?? { error: 'x' }; },
-    { load: async () => JSON.parse(JSON.stringify(saved)), save: async r => { saved = JSON.parse(JSON.stringify(r)); } });
-  return { p, reads };
+    { load: async () => JSON.parse(JSON.stringify(saved)), save: async r => { saved = JSON.parse(JSON.stringify(r)); } },
+    async args => {
+      hired.push(args);
+      // HAS trades the two logins: what each folder answers trades too
+      [limits.mac, limits['has:account_2']] = [limits['has:account_2'], limits.mac];
+      return 'Codex account 2 is now this Mac\'s login';
+    },
+    fn => fn());
+  return { p, reads, hired, limits };
 }
 
 test('the pool reads every account and learns who each one is', async () => {
@@ -110,4 +117,33 @@ test('a task that runs out moves to the next account, and none is left after the
   await p.refresh();
   assert.equal(p.markSpent('/h/mac')?.id, 'has:account_2');
   assert.equal(p.markSpent('/h/has:account_2'), undefined, 'both spent: the manager falls back to another provider');
+});
+
+test("when this Mac's login is out, HAS switches in the account with room, and the readings follow", async () => {
+  const { p, hired } = pool({ mac: { allowed: false, sevenDay: 0, email: 'one@x.com' }, 'has:account_2': { allowed: true, sevenDay: 100, email: 'two@x.com' } });
+  await p.refresh();
+  const done = await p.autoUse();
+  assert.deepEqual(hired, [['ai', 'use', 'codex', 'account_2']]);
+  assert.equal(done?.to.email, 'two@x.com', "this Mac's login is now the second account");
+  assert.equal(p.limits('mac')?.sevenDay, 100, 'its numbers moved with it');
+  assert.equal(p.limits('has:account_2')?.allowed, false, 'and the spent one is held in the slot');
+  assert.equal(await p.autoUse(), undefined, 'nothing more to do: this Mac can run again');
+});
+
+test('a window with an old reading does not swap the spent login back in', async () => {
+  const { p, hired, limits } = pool({ mac: { allowed: false, sevenDay: 0 }, 'has:account_2': { allowed: true, sevenDay: 100 } });
+  await p.refresh();                                     // this window saw this Mac out...
+  [limits.mac, limits['has:account_2']] = [limits['has:account_2'], limits.mac];   // ...then another window switched
+  assert.equal(await p.autoUse(), undefined);
+  assert.deepEqual(hired, [], 'the fresh read says this Mac can run, so nothing is switched');
+});
+
+test('nothing is switched while this Mac can run, or when no account has room', async () => {
+  const fine = pool({ mac: { allowed: true, sevenDay: 50 }, 'has:account_2': { allowed: true, sevenDay: 100 } });
+  await fine.p.refresh();
+  assert.equal(await fine.p.autoUse(), undefined);
+  const spent = pool({ mac: { allowed: false }, 'has:account_2': { allowed: false } });
+  await spent.p.refresh();
+  assert.equal(await spent.p.autoUse(), undefined);
+  assert.deepEqual([...fine.hired, ...spent.hired], []);
 });

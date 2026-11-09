@@ -8,6 +8,7 @@ import { Switcher } from './switcher';
 import { Level, Windows, levelOf, spareNote, tooltipTable, until, windowsText } from './badge';
 import { CodexPool } from './codex-pool';
 import { CodexAccount, usable as codexUsable } from './codex-accounts';
+import { augmentedPath } from './accounts';
 import { CodexAdapter } from './adapters';
 import { readAntigravityUsage, AntigravityUsage, resetAntigravityCache } from './antigravity-usage';
 import { Conversation, WorkerAdapter, WorkerId, AgentTask, WorkerSelection } from './models';
@@ -93,7 +94,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // Claude is the switcher's item; the other providers each get a badge
   codexUsageStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 98);
   codexUsageStatus.name = 'Codex Quota';
-  codexUsageStatus.command = 'quotaRelay.refreshCodex';
+  codexUsageStatus.command = 'quotaRelay.codexAccounts';
 
   antigravityUsageStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 97);
   antigravityUsageStatus.name = 'Antigravity Quota';
@@ -105,7 +106,7 @@ export function activate(context: vscode.ExtensionContext): void {
   paintStatus();
 
   // Refresh periodically in background; Codex reads start a process each, so they keep their own schedule
-  const refreshCodex = () => void codexPool.refresh().then(paintStatus, () => undefined);
+  const refreshCodex = () => void codexPool.refresh().then(async () => { paintStatus(); await codexAutoSwitch(); }, () => undefined);
   setTimeout(refreshCodex, 2_000 + Math.random() * 15_000);
   const statusTimer = setInterval(() => {
     paintStatus();
@@ -124,6 +125,7 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(vscode.commands.registerCommand(`quotaRelay.${id}`, fn));
   }
   registerCommand(context, 'refreshCodex', () => refreshCodexUsage());
+  registerCommand(context, 'codexAccounts', () => codexMenu());
   registerCommand(context, 'refreshAntigravity', () => refreshAntigravityUsage());
   registerCommand(context, 'refreshAll', () => refreshAllUsage());
   registerCommand(context, 'chat', () => {
@@ -230,9 +232,9 @@ function paintCodex(): void {
     }
   }
   if (picked) footer.push(`● Codex work from this plugin goes to ${codexLabel(picked)}.`);
-  if (out && picked && !picked.mac) footer.push('The Codex extension still uses this Mac\'s login.');
+  if (out && picked && !picked.mac) footer.push(codexAuto() ? 'Switching this Mac to it through Hire a Service…' : 'The Codex extension still uses this Mac\'s login; pick the account to switch.');
   if (accounts.length < 2) footer.push('_Add another Codex account in Hire a Service (Accounts → Add) and it appears here._');
-  footer.push('_Click to refresh._');
+  footer.push(`Auto-switch through Hire a Service is ${codexAuto() ? 'on' : 'off'}.`, '_Click to switch, add or refresh._');
   const md = new vscode.MarkdownString(tooltipTable('Codex', rows, footer));
   md.supportHtml = true;
   codexUsageStatus.tooltip = md;
@@ -260,6 +262,59 @@ async function refreshClaudeUsage(showFeedback = true): Promise<void> {
   if (showFeedback && q && !q.error) {
     vscode.window.setStatusBarMessage(`$(check) ${switcher.active?.label ?? 'Claude'} ${windowsText(q)}`, 5000);
   }
+}
+
+function codexAuto(): boolean {
+  return vscode.workspace.getConfiguration('quotaRelay.codex').get<boolean>('autoSwitch', true);
+}
+
+/** This Mac's Codex login is out and another account has room: have Hire a Service switch them. */
+async function codexAutoSwitch(): Promise<void> {
+  if (!codexAuto()) return;
+  try {
+    const done = await codexPool.autoUse();
+    if (!done) return;
+    const line = `Codex ran out on this Mac's login, so Hire a Service switched it to ${codexLabel(done.to).replace(/ \(.*/, '')}. The Codex extension follows within a minute.`;
+    output.appendLine(`>> ${line}`);
+    void vscode.window.showInformationMessage(line);
+    void codexPool.refresh(true).then(paintStatus);
+  } catch (e) {
+    output.appendLine(`[codex] switching through Hire a Service failed: ${e instanceof Error ? e.message : e}`);
+  }
+  paintStatus();
+}
+
+/** The Codex badge's menu: every account, switching one in by hand, adding one, refreshing. */
+async function codexMenu(): Promise<void> {
+  type Item = vscode.QuickPickItem & { run?: () => unknown };
+  const picked = codexPool.picked();
+  const items: Item[] = [{ label: 'Codex accounts', kind: vscode.QuickPickItemKind.Separator }];
+  for (const a of codexPool.accounts) {
+    const l = codexPool.limits(a.id);
+    items.push({
+      label: `${a.mac ? '$(pass-filled)' : '$(circle-large-outline)'} ${codexLabel(a)}`,
+      description: [a.email, a.plan].filter(Boolean).join(' · '),
+      detail: !l ? 'Not read yet' : l.signedOut ? '$(warning) Signed out' : `${codexUsable(l) ? '' : '⛔ out · '}${windowsText(l)}${a.id === picked?.id ? '  · plugin work goes here' : ''}`,
+      run: a.mac ? undefined : async () => {
+        try {
+          const said = await codexPool.use(a.id);
+          output.appendLine(`>> ${said}`);
+          void vscode.window.showInformationMessage(`Codex on this Mac now uses ${codexLabel(codexPool.accounts.find(x => x.mac)!).replace(/ \(.*/, '')}. The Codex extension follows within a minute.`);
+          await codexPool.refresh(true);
+          paintStatus();
+        } catch (e) { void vscode.window.showErrorMessage(`Hire a Service could not switch Codex: ${e instanceof Error ? e.message : e}`); }
+      }
+    });
+  }
+  items.push({ label: '', kind: vscode.QuickPickItemKind.Separator },
+    { label: `$(${codexAuto() ? 'sync' : 'circle-slash'}) Auto-switch: ${codexAuto() ? 'on' : 'off'}`,
+      detail: 'When this Mac\'s Codex login runs out, Hire a Service puts an account with room in its place',
+      run: () => vscode.workspace.getConfiguration('quotaRelay.codex').update('autoSwitch', !codexAuto(), vscode.ConfigurationTarget.Global) },
+    { label: '$(add) Add a Codex account…', description: 'Through Hire a Service: Codex\'s own browser sign-in',
+      run: () => { const t = vscode.window.createTerminal({ name: 'Codex: add account', env: { PATH: augmentedPath() } }); t.show(); t.sendText('hire ai connect codex'); } },
+    { label: '$(refresh) Refresh', run: () => refreshCodexUsage() });
+  const chosen = await vscode.window.showQuickPick(items, { title: 'Codex accounts', placeHolder: 'Pick an account to make it this Mac\'s login' });
+  await chosen?.run?.();
 }
 
 async function refreshCodexUsage(showFeedback = true): Promise<void> {
